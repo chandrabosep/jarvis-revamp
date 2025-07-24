@@ -2,6 +2,16 @@
 
 This repository is a boilerplate for building Web3 applications with Next.js 15, focused on the Skynet blockchain. It provides a ready-to-use foundation for developers and interns to quickly start projects involving NFT minting, wallet authentication, and agent management.
 
+## 📚 Important Documentation & Resources
+
+-   **[Skynet Agent API Documentation](https://skynetagent-c0n525.stackos.io/api-docs)** - Complete API reference for Skynet agents
+-   **[Skynet Explorer](https://explorer.skynet.io/)** - Blockchain explorer for viewing transactions, blocks, and network data
+-   **[Skynet DevTools](https://preview-c0n0.stackos.io/)** - Development dashboard for managing projects and subscriptions
+
+### Current SDK Version
+
+-   **@decloudlabs/skynet**: `0.6.28`
+
 ## 🎯 What You'll Learn
 
 -   **Web3 Authentication**: Connect wallets using Web3Auth with multiple provider support
