@@ -23,10 +23,14 @@ export const NETWORK_CONFIG = {
 	// },
 } as const;
 
-// API Configuration - Update with your API endpoints
+// API Configuration - All endpoints from environment variables
 export const API_CONFIG = {
 	STORAGE_API: process.env.NEXT_PUBLIC_STORAGE_API_URL,
 	SKYINTEL_API: process.env.NEXT_PUBLIC_SKYINTEL_API_URL,
+	NFT_USER_AGENT_URL: process.env.NEXT_PUBLIC_NFT_USER_AGENT_URL,
+	REDIS_USER_AGENT_URL: process.env.NEXT_PUBLIC_REDIS_USER_AGENT_URL,
+	LIGHTHOUSE_SERVICE_URL: process.env.NEXT_PUBLIC_LIGHTHOUSE_SERVICE_URL,
+	KNOWLEDGE_BASE_URL: process.env.NEXT_PUBLIC_KNOWLEDGE_BASE_URL,
 	BATCH_SIZE: 20,
 	MAX_RETRIES: 3,
 	RETRY_DELAY: 2000,
