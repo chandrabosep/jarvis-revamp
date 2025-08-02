@@ -1,12 +1,37 @@
 import axios from "axios";
+import { apiKeyManager } from "@/utils/api-key-manager";
 
 const axiosInstance = axios.create({
 	baseURL: process.env.NEXT_PUBLIC_API_BASE_URL,
 	headers: {
 		"Content-Type": "application/json",
-		"x-api-key": process.env.NEXT_PUBLIC_X_API_KEY,
 	},
 });
+
+export const getAxiosInstanceWithApiKey = async (
+	skyBrowser?: any,
+	web3Context?: any
+) => {
+	if (skyBrowser && web3Context) {
+		try {
+			const apiKey = await apiKeyManager.getApiKey(
+				skyBrowser,
+				web3Context
+			);
+			return axios.create({
+				baseURL: process.env.NEXT_PUBLIC_API_BASE_URL,
+				headers: {
+					"Content-Type": "application/json",
+					"x-api-key": apiKey,
+				},
+			});
+		} catch (error) {
+			console.warn("Failed to get API key for axios instance:", error);
+		}
+	}
+
+	return axiosInstance;
+};
 
 // Request interceptor
 axiosInstance.interceptors.request.use(

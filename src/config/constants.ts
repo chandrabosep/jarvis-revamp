@@ -1,4 +1,40 @@
-// Network Configuration - Customize for your blockchain
+// API Configuration
+export const API_CONFIG = {
+	STORAGE_API: process.env.NEXT_PUBLIC_STORAGE_API_URL,
+	SKYINTEL_API: process.env.NEXT_PUBLIC_SKYINTEL_API_URL,
+	NFT_USER_AGENT_URL: process.env.NEXT_PUBLIC_NFT_USER_AGENT_URL,
+	REDIS_USER_AGENT_URL: process.env.NEXT_PUBLIC_REDIS_USER_AGENT_URL,
+	BATCH_SIZE: 20,
+	MAX_RETRIES: 3,
+	RETRY_DELAY: 2000,
+} as const;
+
+// Socket Configuration ONLY for Agent Generation
+export const NATURAL_REQUEST_SOCKET_CONFIG = {
+	URL: process.env.NEXT_PUBLIC_SKYINTEL_API_URL,
+	TRANSPORTS: ["websocket"] as const,
+	TIMEOUT: 600000,
+	RECONNECTION: true,
+	RECONNECTION_ATTEMPTS: 3,
+	RECONNECTION_DELAY: 2000,
+} as const;
+
+// Workflow Execution URLs
+export const WORKFLOW_ENDPOINTS = {
+	// Full workflow execution
+	FULL_WORKFLOW: `${process.env.NEXT_PUBLIC_NFT_USER_AGENT_URL}/natural-request`,
+	FULL_WORKFLOW_STATUS: `${process.env.NEXT_PUBLIC_REDIS_USER_AGENT_URL}/api/workflows`,
+} as const;
+
+// API Key Generation
+export const API_KEY_CONFIG = {
+	GENERATION_URL:
+		"https://lighthouseservice-c0n1.stackos.io/generate-api-key",
+	STORAGE_KEY: "skynet_api_key",
+	VALIDITY_DURATION: 24 * 60 * 60 * 1000, // 24 hours
+} as const;
+
+// Network Configuration
 export const NETWORK_CONFIG = {
 	SKYNET: {
 		CHAIN_ID: 619,
@@ -11,43 +47,29 @@ export const NETWORK_CONFIG = {
 		TICKER_NAME: "sUSD",
 		DISPLAY_NAME: "Skynet",
 	},
-	// Add more networks as needed
-	// ETHEREUM: {
-	//   CHAIN_ID: 1,
-	//   CHAIN_ID_HEX: "0x1",
-	//   RPC_URL: "https://mainnet.infura.io/v3/YOUR_PROJECT_ID",
-	//   EXPLORER_URL: "https://etherscan.io",
-	//   TICKER: "ETH",
-	//   TICKER_NAME: "Ethereum",
-	//   DISPLAY_NAME: "Ethereum Mainnet",
-	// },
-} as const;
-
-// API Configuration - All endpoints from environment variables
-export const API_CONFIG = {
-	STORAGE_API: process.env.NEXT_PUBLIC_STORAGE_API_URL,
-	SKYINTEL_API: process.env.NEXT_PUBLIC_SKYINTEL_API_URL,
-	NFT_USER_AGENT_URL: process.env.NEXT_PUBLIC_NFT_USER_AGENT_URL,
-	REDIS_USER_AGENT_URL: process.env.NEXT_PUBLIC_REDIS_USER_AGENT_URL,
-	LIGHTHOUSE_SERVICE_URL: process.env.NEXT_PUBLIC_LIGHTHOUSE_SERVICE_URL,
-	KNOWLEDGE_BASE_URL: process.env.NEXT_PUBLIC_KNOWLEDGE_BASE_URL,
-	BATCH_SIZE: 20,
-	MAX_RETRIES: 3,
-	RETRY_DELAY: 2000,
 } as const;
 
 // App Configuration
 export const APP_CONFIG = {
-	NAME: "Skynet Boilerplate",
-	DESCRIPTION: "A modern Web3 boilerplate for Skynet blockchain",
+	NAME: "Skynet Agent Workflow Boilerplate",
+	DESCRIPTION:
+		"Complete boilerplate for building agent workflow applications with Web3 integration",
 	VERSION: "1.0.0",
 	SUPPORTED_NETWORKS: ["SKYNET"],
 } as const;
 
-// Feature Flags - Enable/disable features
+// Feature Flags
 export const FEATURE_FLAGS = {
 	ENABLE_NFT_MINTING: true,
 	ENABLE_AGENT_MANAGEMENT: true,
 	ENABLE_WALLET_CONNECTION: true,
 	ENABLE_REAL_TIME_UPDATES: true,
+} as const;
+
+// Status Constants
+export const STATUS = {
+	IDLE: "idle",
+	PROCESSING: "processing",
+	TEST_COMPLETED: "test_completed",
+	FAILED: "failed",
 } as const;

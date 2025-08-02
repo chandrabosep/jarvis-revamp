@@ -44,7 +44,9 @@ export default function HomePage() {
 					</div>
 					<div className="border rounded-lg p-6 text-center">
 						<div className="text-2xl mb-2">🤖</div>
-						<h3 className="font-semibold mb-2">Agent Minting & Running</h3>
+						<h3 className="font-semibold mb-2">
+							Agent Minting & Running
+						</h3>
 						<p className="text-sm text-muted-foreground">
 							Mint agent NFTs and run AI agents on-chain
 						</p>
@@ -69,7 +71,7 @@ export default function HomePage() {
 						Agent Management
 					</h2>
 					<p className="text-sm text-muted-foreground mb-4">
-						Deploy and manage AI agents, mint their NFTs, and
+						Select and execute AI agents, mint their NFTs, and
 						monitor their performance
 					</p>
 					<Link href="/agents">
@@ -101,7 +103,7 @@ export default function HomePage() {
 							<span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-medium">
 								3
 							</span>
-							<span>Create and manage AI agents</span>
+							<span>Select and execute AI agents</span>
 						</div>
 						<div className="flex items-center gap-3">
 							<span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-medium">

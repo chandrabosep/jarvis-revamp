@@ -10,21 +10,16 @@ import {
 } from "@/utils/skynetHelper";
 import { toast } from "sonner";
 import Link from "next/link";
-import { getAgents, getAgentById } from "@/controllers/agents/agents.queries";
-import { Agent } from "@/types/agents";
-
-// Extended interface to include is_deployed field
-interface AgentWithDeployment extends Agent {
-	is_deployed: boolean;
-}
+import { getAgents, getAgentById } from "@/controllers/agents";
+import { AgentDetail } from "@/types";
 
 export default function AgentsPage() {
 	const { isConnected, skyBrowser, address } = useWallet();
 	const { hasNfts } = useNft();
-	const [agents, setAgents] = useState<AgentWithDeployment[]>([]);
+	const [agents, setAgents] = useState<AgentDetail[]>([]);
 	const [selectedAgentId, setSelectedAgentId] = useState<string>("");
 	const [selectedAgentDetails, setSelectedAgentDetails] =
-		useState<AgentWithDeployment | null>(null);
+		useState<AgentDetail | null>(null);
 	const [loading, setLoading] = useState(false);
 	const [minting, setMinting] = useState(false);
 	const [checkingOwnership, setCheckingOwnership] = useState(false);
@@ -42,8 +37,8 @@ export default function AgentsPage() {
 		setLoading(true);
 		try {
 			const data = await getAgents();
-			// Cast the agents to include is_deployed field
-			setAgents(data.data.agents as AgentWithDeployment[]);
+			// Cast the agents to AgentDetail type
+			setAgents(data.data.agents as AgentDetail[]);
 		} catch (error) {
 			console.error("Error fetching agents:", error);
 			toast.error("Failed to fetch agents");
@@ -108,7 +103,7 @@ export default function AgentsPage() {
 		try {
 			const data = await getAgentById(agentId);
 			// Use the fresh data from the API response and cast to include is_deployed
-			const agentDetails = data.data as AgentWithDeployment;
+			const agentDetails = data.data as AgentDetail;
 			setSelectedAgentDetails(agentDetails);
 
 			// Check if user owns NFT for this agent
@@ -145,7 +140,7 @@ export default function AgentsPage() {
 		try {
 			const result = await mintAgentNft(
 				skyBrowser,
-				selectedAgentDetails as Agent
+				selectedAgentDetails as AgentDetail
 			);
 
 			if (result) {

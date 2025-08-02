@@ -602,7 +602,7 @@ export const initializeSkynet = async (
 	return skyBrowser;
 };
 
-// Check user balance for minting
+
 export const checkUserBalance = async (skyBrowser: SkyMainBrowser | null) => {
 	try {
 		if (!skyBrowser) {

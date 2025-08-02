@@ -1,6 +1,7 @@
 import axiosInstance from "@/lib/axios";
-import { AgentDetailResponse, AgentResponse } from "@/types/agents";
+import { AgentResponse, AgentDetailResponse, AgentDetail } from "@/types";
 
+// Agent Queries
 export const getAgents = async (params?: {
 	search?: string;
 	limit?: number;

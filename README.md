@@ -1,449 +1,223 @@
-# Skynet Boilerplate
+# Skynet Agent Workflow Boilerplate
 
-This repository is a boilerplate for building Web3 applications with Next.js 15, focused on the Skynet blockchain. It provides a ready-to-use foundation for developers and interns to quickly start projects involving NFT minting, wallet authentication, and agent management.
+A complete Next.js 15 boilerplate for building agent workflow applications with Web3 integration, HTTP-based workflow execution, and Skynet blockchain integration.
 
-## 📚 Important Documentation & Resources
+## 🚀 Features
 
--   **[Skynet Agent API Documentation](https://skynetagent-c0n525.stackos.io/api-docs)** - Complete API reference for Skynet agents
--   **[Skynet Explorer](https://explorer.skynet.io/)** - Blockchain explorer for viewing transactions, blocks, and network data
--   **[Skynet DevTools](https://preview-c0n0.stackos.io/)** - Development dashboard for managing projects and subscriptions
+-   **Next.js 15** with TypeScript and App Router
+-   **Web3 Integration** with Web3Auth for wallet connections
+-   **Skynet Blockchain** integration with NFT-based access
+-   **HTTP-based Workflow Execution** with polling for status updates
+-   **Real-time Agent Generation** using Socket.IO
+-   **Modern UI** with Tailwind CSS and Radix UI components
+-   **State Management** with Zustand stores
+-   **API Key Management** with caching and automatic renewal
+-   **TypeScript** with comprehensive type definitions
 
-### Current SDK Version
+## 📋 Prerequisites
 
--   **@decloudlabs/skynet**: `0.6.28`
+-   Node.js 18+
+-   npm or yarn
+-   Web3Auth account (for wallet connections)
+-   Skynet blockchain access
 
-## 🎯 What You'll Learn
+## 🛠️ Quick Start
 
--   **Web3 Authentication**: Connect wallets using Web3Auth with multiple provider support
--   **NFT Minting**: Mint account and agent NFTs on the Skynet blockchain
--   **Agent Management**: Create and manage AI agents with their own NFT collections
--   **Workflow Execution**: Execute workflows with automatic API key generation and real-time monitoring
--   **Status Monitoring**: Track workflow progress using request IDs and Redis-Agent service
--   **Blockchain Integration**: Interact with Skynet network using ethers.js
--   **Modern UI**: Build clean interfaces with Shadcn/ui and Tailwind CSS
--   **Real-time Features**: WebSocket communication for live updates
-
-## 🏗️ Project Structure
-
-```
-src/
-├── app/                    # Next.js 15 App Router
-│   ├── (routes)/          # Route groups
-│   │   └── agents/        # Agent management pages
-│   ├── layout.tsx         # Root layout with providers
-│   └── page.tsx           # Landing page
-├── components/            # Reusable UI components
-│   ├── ui/               # Shadcn/ui components
-│   ├── nft/              # NFT-related components
-│   └── wallet/           # Wallet components
-├── config/               # Configuration files
-│   ├── constants.ts      # App constants and network config
-│   └── web3AuthConfig.ts # Web3Auth configuration
-├── hooks/                # Custom React hooks
-│   ├── use-wallet.ts     # Wallet connection logic
-│   └── use-nft.ts        # NFT operations
-├── lib/                  # Utility libraries
-│   ├── axios.ts          # HTTP client setup
-│   └── utils.ts          # General utilities
-├── providers/            # React context providers
-│   └── Web3AuthProvider.tsx # Web3Auth provider
-├── types/                # TypeScript definitions
-│   ├── agents.d.ts       # Agent-related types
-│   └── wallet.ts         # Wallet-related types
-└── utils/                # Utility functions
-    └── skynetHelper.ts   # Skynet blockchain utilities
-├── services/             # Workflow execution services
-│   ├── user-agent.service.ts      # Workflow execution with API key generation
-│   ├── redis-agent.service.ts     # Status monitoring with real-time updates
-│   └── workflow-manager.service.ts # Unified workflow manager
-└── components/           # Additional components
-    ├── workflow-executor.tsx      # Ready-to-use workflow component
-    └── workflow-example.tsx       # Usage demonstration
-```
-
-## 🔄 Workflow Execution Services
-
-The boilerplate includes a complete workflow execution system with automatic API key generation and real-time status monitoring.
-
-### 🎯 What the Workflow Services Do
-
-**User-Agent Service** = Generates API key → Executes workflow → Returns request ID  
-**Redis-Agent Service** = Generates API key → Monitors status using request ID → Provides real-time updates  
-**Workflow Manager** = Combines both services → Handles execution + monitoring → Provides unified interface
-
-### 📊 Complete Data Flow
-
-1. **API Key Generation** → Lighthouse Service (`${NEXT_PUBLIC_LIGHTHOUSE_SERVICE_URL}/generate-api-key`)
-2. **Workflow Execution** → User-Agent Service with API key in headers
-3. **Request ID Return** → Unique identifier for status monitoring
-4. **Status Monitoring** → Redis-Agent Service with API key + request ID
-5. **Real-time Updates** → UI components with progress and completion data
-
-### 🚀 Quick Usage
-
-```typescript
-import { useWorkflowExecution } from "@/hooks/use-workflow-execution";
-
-function MyComponent() {
-	const { executeWorkflow, isExecuting, currentStatus, error } =
-		useWorkflowExecution();
-
-	const handleExecute = async () => {
-		await executeWorkflow({
-			skyBrowser: yourSkyBrowserInstance,
-			web3Context: yourWeb3Context,
-			agentId: "your-agent-id",
-			prompt: "Your workflow prompt",
-			workflow: [
-				{
-					id: "1",
-					type: "web_search",
-					config: { query: "blockchain", maxResults: 5 },
-				},
-			],
-			isIndividualTool: false,
-		});
-	};
-
-	return (
-		<div>
-			<button onClick={handleExecute} disabled={isExecuting}>
-				{isExecuting ? "Executing..." : "Execute Workflow"}
-			</button>
-
-			{currentStatus && (
-				<div>
-					Status: {currentStatus.workflowStatus}
-					Progress: {currentStatus.progress}%
-				</div>
-			)}
-
-			{error && <div>Error: {error}</div>}
-		</div>
-	);
-}
-```
-
-### 🎨 Ready-to-Use Component
-
-```typescript
-import { WorkflowExecutor } from "@/components/workflow-executor";
-
-function MyPage() {
-	return (
-		<WorkflowExecutor
-			skyBrowser={yourSkyBrowserInstance}
-			web3Context={yourWeb3Context}
-			agentId="your-agent-id"
-			prompt="Research blockchain technology"
-			workflow={[
-				{
-					id: "1",
-					type: "web_search",
-					config: { query: "blockchain", maxResults: 5 },
-				},
-			]}
-			isIndividualTool={false}
-		/>
-	);
-}
-```
-
-### 🔑 Key Features
-
-✅ **Automatic API Key Management** - No manual key handling required  
-✅ **Request ID Based Monitoring** - Unique tracking for each workflow  
-✅ **Real-time Status Updates** - Live progress and completion data  
-✅ **Beginner-Friendly** - Simple interfaces with complex functionality  
-✅ **Production Ready** - Error handling, cleanup, and resource management
-
-### 📡 API Endpoints Used
-
-All endpoints are configured via environment variables:
-
--   **Lighthouse Service**: `POST ${NEXT_PUBLIC_LIGHTHOUSE_SERVICE_URL}/generate-api-key` - API key generation
--   **User-Agent Service**: `POST ${NEXT_PUBLIC_NFT_USER_AGENT_URL}/natural-request` - Workflow execution
--   **Redis-Agent Service**: `GET ${NEXT_PUBLIC_REDIS_USER_AGENT_URL}/api/workflows/{requestId}` - Status monitoring
--   **Knowledge Base**: `POST ${NEXT_PUBLIC_KNOWLEDGE_BASE_URL}/natural-request` - Individual tool execution
--   **Knowledge Base Status**: `GET ${NEXT_PUBLIC_KNOWLEDGE_BASE_URL}/api/workflows/{requestId}` - Tool status monitoring
-
-### 📚 Detailed Documentation
-
-For complete workflow services documentation, see: **[WORKFLOW_SERVICES_README.md](./WORKFLOW_SERVICES_README.md)**
-
-## 🚀 Quick Start
-
-### Prerequisites
-
--   Node.js 18+ installed
--   Basic understanding of React and TypeScript
--   Skynet network configured in your wallet (Chain ID: 619)
-
-### 1. Clone and Install
+### 1. Clone or Download
 
 ```bash
 # Clone the repository
 git clone <repository-url>
 cd skynet-boilerplate
 
-# Install dependencies
+# Or download and extract the ZIP file
+```
+
+### 2. Install Dependencies
+
+```bash
 npm install
 ```
 
-### 2. Environment Setup
+### 3. Environment Configuration
 
-Copy the example environment file and configure your variables:
+Copy the environment example file and configure your settings:
 
 ```bash
-# Copy the example environment file
-cp .env.example .env.local
+cp env.example .env.local
 ```
 
-The `.env.example` file contains all required environment variables with descriptions. Key variables include:
-
--   **Network Configuration**: Skynet chain ID, RPC URL, and explorer URL
--   **API Endpoints**: All service URLs for workflow execution and monitoring
--   **Web3Auth Client ID**: For wallet authentication (fallback is hardcoded)
--   **API Keys**: For accessing Skynet services
-
-**Required Environment Variables:**
+Edit `.env.local` with your configuration:
 
 ```bash
-# Skynet Network Configuration
-NEXT_PUBLIC_SKYNET_CHAIN_ID=619
-NEXT_PUBLIC_SKYNET_RPC_URL=https://rpc.skynet.io
-NEXT_PUBLIC_SKYNET_EXPLORER_URL=https://explorer.skynet.io
+# API Configuration
+NEXT_PUBLIC_API_BASE_URL=https://your-api-url.com
+NEXT_PUBLIC_NFT_USER_AGENT_URL=https://nft-user-agent-url.com
+NEXT_PUBLIC_REDIS_USER_AGENT_URL=https://redis-user-agent-url.com
 
-# API Endpoints - All services
-NEXT_PUBLIC_STORAGE_API_URL=https://storage-c0n499.stackos.io
-NEXT_PUBLIC_SKYINTEL_API_URL=https://skynetagent-c0n525.stackos.io
-NEXT_PUBLIC_NFT_USER_AGENT_URL=https://nft-user-agent-c0n499.stackos.io
-NEXT_PUBLIC_REDIS_USER_AGENT_URL=https://redis-user-agent-c0n499.stackos.io
-NEXT_PUBLIC_LIGHTHOUSE_SERVICE_URL=https://lighthouseservice-c0n1.stackos.io
-NEXT_PUBLIC_KNOWLEDGE_BASE_URL=https://knowledgebase-c0n499.stackos.io
+# Skynet Configuration
+NEXT_PUBLIC_STORAGE_API_URL=https://your-storage-url.com
+NEXT_PUBLIC_SKYINTEL_API_URL=https://your-skyintel-url.com
 
 # Web3Auth Configuration
-NEXT_PUBLIC_WEB3AUTH_CLIENT_ID=YOUR_WEB3AUTH_CLIENT_ID
+NEXT_PUBLIC_WEB3AUTH_CLIENT_ID=your-web3auth-client-id
+
+# Network Configuration
+NEXT_PUBLIC_RPC_URL=https://rpc.skynet.io
+NEXT_PUBLIC_EXPLORER_URL=https://explorer.skynet.io
 ```
 
-**Note**: The Web3Auth client ID is already provided as a fallback in the code, so the app will work even if you don't set this environment variable.
-
-### 3. Configure Your Wallet
-
-Add Skynet network to your wallet:
-
--   **Network Name**: Skynet
--   **RPC URL**: `https://skynet-rpc.example.com` (update with actual RPC)
--   **Chain ID**: 619
--   **Currency Symbol**: sUSD
--   **Block Explorer**: `https://skynet-explorer.example.com`
-
-### 4. Start Development
+### 4. Run Development Server
 
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) to see the application.
+Open [http://localhost:3000](http://localhost:3000) to view the application.
 
-## 🎮 How to Use
+## 📁 Project Structure
 
-### 1. Connect Your Wallet
+```
+src/
+├── app/                    # Next.js App Router
+│   ├── layout.tsx         # Root layout with providers
+│   ├── page.tsx           # Main dashboard
+│   ├── agents/            # Agent pages
+│   └── globals.css        # Global styles
+├── components/            # React components
+│   ├── ui/               # Reusable UI components
+│   ├── nft/              # NFT-related components
+│   └── wallet/           # Wallet components
+├── config/               # Configuration files
+├── controllers/          # API controllers
+├── hooks/               # Custom React hooks
+├── lib/                 # Utility libraries
+├── providers/           # Context providers
+├── stores/              # Zustand stores
+├── types/               # TypeScript definitions
+└── utils/               # Business logic utilities
+```
 
--   Click the "Connect Wallet" button on the homepage
--   Choose your preferred wallet provider (MetaMask, WalletConnect, etc.)
--   Approve the connection in your wallet
+## 🔧 Core Components
 
-### 2. Mint Account NFT
+### 1. Web3Auth Integration
 
--   After connecting, you'll see a "Mint Account NFT" button
--   Click to mint your first NFT (required for accessing features)
--   Confirm the transaction in your wallet
+The boilerplate includes Web3Auth for secure wallet connections:
 
-### 3. Create Agents
+```typescript
+// src/providers/Web3AuthProvider.tsx
+import { Web3AuthProvider } from "@/providers/Web3AuthProvider";
 
--   Navigate to `/agents` to view your agent dashboard
--   Click "Create Agent" to deploy a new AI agent
--   Fill in agent details and confirm creation
+export default function RootLayout({
+	children,
+}: {
+	children: React.ReactNode;
+}) {
+	return (
+		<html lang="en">
+			<body>
+				<Web3AuthProvider>{children}</Web3AuthProvider>
+			</body>
+		</html>
+	);
+}
+```
 
-## 🔧 Troubleshooting
+### 2. API Key Management
 
-### Web3Auth Issues
+Automatic API key generation and caching:
 
-If you encounter Web3Auth connection problems:
+```typescript
+// src/utils/api-key-manager.ts
+import { apiKeyManager } from "@/utils/api-key-manager";
 
-1. **Check Environment Variables**: Ensure `NEXT_PUBLIC_WEB3AUTH_CLIENT_ID` is set correctly
-2. **Hardcode Client ID**: If environment variables aren't working, the app has a fallback client ID hardcoded in `src/config/web3AuthConfig.ts`
-3. **Network Issues**: Make sure you're on the correct network (Skynet Chain ID: 619)
-4. **Browser Console**: Check for any JavaScript errors in the browser console
+const apiKey = await apiKeyManager.getApiKey(skyBrowser, web3Context);
+```
 
-### Common Issues
+### 3. Workflow Execution
 
-#### "Wallet not connected"
+HTTP-based workflow execution with polling:
 
--   Ensure your wallet extension is installed and unlocked
--   Try refreshing the page and reconnecting
--   Check if your wallet supports the required network
+```typescript
+// src/utils/workflow-executor.ts
+import { workflowExecutor } from "@/utils/workflow-executor";
 
-#### "Transaction failed"
+const requestId = await workflowExecutor.executeWorkflow(
+	payload,
+	skyBrowser,
+	web3Context
+);
+```
 
--   Verify you have sufficient sUSD balance for gas fees
--   Ensure you're connected to the Skynet network
--   Check if the contract addresses are correct
+### 4. State Management
 
-#### "NFT minting failed"
+Zustand stores for global state:
 
--   Confirm you have enough balance for the mint price
--   Check if the NFT contract is properly registered
--   Verify network connectivity
+```typescript
+// src/stores/index.ts
+import { useAgentStore } from "@/stores/agent-store";
+import { useExecutionStatusStore } from "@/stores/execution-status-store";
+import { useUIStore } from "@/stores/ui-store";
+```
 
-### Development Issues
+## 🎨 UI Components
 
-#### TypeScript Errors
+The boilerplate includes a complete set of UI components:
+
+-   **Button**: Multiple variants and sizes
+-   **Input**: Form inputs with validation
+-   **Label**: Accessible form labels
+-   **Textarea**: Multi-line text inputs
+-   **Toast**: Notification system with Sonner
+
+## 🔌 Available Scripts
 
 ```bash
-# Check for type errors
-npm run type-check
-
-# Fix linting issues
-npm run lint
+# Development
+npm run dev          # Start development server
+npm run build        # Build for production
+npm run start        # Start production server
+npm run lint         # Run ESLint
 ```
 
-#### Build Issues
+## 🌐 Environment Variables
 
-```bash
-# Clear Next.js cache
-rm -rf .next
-npm run build
-```
+| Variable                           | Description                 | Required |
+| ---------------------------------- | --------------------------- | -------- |
+| `NEXT_PUBLIC_API_BASE_URL`         | Base URL for API endpoints  | Yes      |
+| `NEXT_PUBLIC_NFT_USER_AGENT_URL`   | NFT user agent endpoint     | Yes      |
+| `NEXT_PUBLIC_REDIS_USER_AGENT_URL` | Redis user agent endpoint   | Yes      |
+| `NEXT_PUBLIC_STORAGE_API_URL`      | Skynet storage API URL      | Yes      |
+| `NEXT_PUBLIC_SKYINTEL_API_URL`     | Skynet intelligence API URL | Yes      |
+| `NEXT_PUBLIC_WEB3AUTH_CLIENT_ID`   | Web3Auth client ID          | Yes      |
+| `NEXT_PUBLIC_RPC_URL`              | Skynet RPC URL              | Yes      |
+| `NEXT_PUBLIC_EXPLORER_URL`         | Skynet explorer URL         | Yes      |
 
-## 🛠️ Key Technologies
+## 🔑 Key Features
 
--   **Frontend**: Next.js 15, React 18, TypeScript
--   **Web3**: Web3Auth, ethers.js, Skynet SDK
--   **UI**: Shadcn/ui, Tailwind CSS, Lucide Icons
--   **State Management**: React Hooks, Context API, Zustand
--   **HTTP Client**: Axios
--   **Real-time**: WebSockets
+### 1. Agent Management
 
-## 📁 Important Files Explained
+-   List and view agents
+-   Select and execute agents
+-   Agent workflow execution
 
-### Core Configuration
+### 2. NFT Integration
 
--   `src/config/constants.ts` - App constants, network config, API endpoints
--   `src/config/web3AuthConfig.ts` - Web3Auth setup with fallback client ID
--   `src/lib/axios.ts` - HTTP client with API key authentication
+-   NFT minting and management
+-   NFT-based access control
+-   Collection management
 
-### Web3 Integration
+### 3. Workflow Execution
 
--   `src/utils/skynetHelper.ts` - Skynet blockchain operations
--   `src/hooks/use-wallet.ts` - Wallet connection and management
--   `src/hooks/use-nft.ts` - NFT operations and state
+-   HTTP-based execution
+-   Real-time status polling
+-   Full workflow execution
 
-### UI Components
+### 4. Web3 Integration
 
--   `src/components/wallet/connect-button.tsx` - Wallet connection UI
--   `src/components/nft/mint-button.tsx` - NFT minting interface
--   `src/components/workflow-executor.tsx` - Ready-to-use workflow execution component
--   `src/app/page.tsx` - Landing page with feature overview
-
-### Workflow Services
-
--   `src/services/user-agent.service.ts` - Workflow execution with API key generation
--   `src/services/redis-agent.service.ts` - Status monitoring with real-time updates
--   `src/services/workflow-manager.service.ts` - Unified workflow manager
--   `src/hooks/use-workflow-execution.ts` - React hook for workflow execution
-
-## 🔍 Code Examples
-
-### Connecting Wallet
-
-```typescript
-import { useWallet } from "@/hooks/use-wallet";
-
-function MyComponent() {
-	const { isConnected, address, connect, disconnect } = useWallet();
-
-	return (
-		<button onClick={connect}>
-			{isConnected ? `Connected: ${address}` : "Connect Wallet"}
-		</button>
-	);
-}
-```
-
-### Minting NFT
-
-```typescript
-import { useNft } from "@/hooks/use-nft";
-
-function MintComponent() {
-	const { mintNft, minting, hasNfts } = useNft();
-
-	const handleMint = async () => {
-		const result = await mintNft();
-		if (result.success) {
-			console.log("NFT minted:", result.nftId);
-		}
-	};
-
-	return (
-		<button onClick={handleMint} disabled={minting || hasNfts}>
-			{minting ? "Minting..." : "Mint NFT"}
-		</button>
-	);
-}
-```
-
-### Executing Workflows
-
-```typescript
-import { useWorkflowExecution } from "@/hooks/use-workflow-execution";
-
-function WorkflowComponent() {
-	const { executeWorkflow, isExecuting, currentStatus, error } =
-		useWorkflowExecution();
-
-	const handleExecute = async () => {
-		await executeWorkflow({
-			skyBrowser: yourSkyBrowserInstance,
-			web3Context: yourWeb3Context,
-			agentId: "agent-123",
-			prompt: "Research blockchain technology",
-			workflow: [
-				{
-					id: "1",
-					type: "web_search",
-					config: { query: "blockchain", maxResults: 5 },
-				},
-				{
-					id: "2",
-					type: "text_generation",
-					config: { prompt: "Summarize the results", maxTokens: 500 },
-				},
-			],
-			isIndividualTool: false,
-		});
-	};
-
-	return (
-		<div>
-			<button onClick={handleExecute} disabled={isExecuting}>
-				{isExecuting ? "Executing..." : "Execute Workflow"}
-			</button>
-
-			{currentStatus && (
-				<div>
-					Status: {currentStatus.workflowStatus}
-					Progress: {currentStatus.progress}% Current Subnet: {currentStatus.currentSubnet}
-				</div>
-			)}
-
-			{error && <div>Error: {error}</div>}
-		</div>
-	);
-}
-```
+-   Multi-wallet support
+-   Secure authentication
+-   Blockchain interactions
 
 ## 🚀 Deployment
 
@@ -452,52 +226,74 @@ function WorkflowComponent() {
 1. Push your code to GitHub
 2. Connect your repository to Vercel
 3. Add environment variables in Vercel dashboard
-4. Deploy automatically on push
+4. Deploy automatically
 
-### Manual Deployment
+### Other Platforms
 
 ```bash
 # Build the application
 npm run build
 
 # Start production server
-npm start
+npm run start
 ```
+
+## 🔧 Customization
+
+### Adding New Components
+
+1. Create component in `src/components/`
+2. Add to UI library if reusable
+3. Import and use in pages
+
+### Adding New API Endpoints
+
+1. Add endpoint in `src/controllers/`
+2. Update types in `src/types/`
+3. Use in components or hooks
+
+### Adding New Stores
+
+1. Create store in `src/stores/`
+2. Export from `src/stores/index.ts`
+3. Use in components
 
 ## 🤝 Contributing
 
-### Development Workflow
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request
 
-1. Create feature branch from `main`
-2. Follow coding standards and TypeScript best practices
-3. Add proper error handling and loading states
-4. Test thoroughly before submitting PR
-5. Update documentation if needed
+## 📄 License
 
-### Code Standards
+This project is licensed under the MIT License.
 
--   Use TypeScript for all new code
--   Follow React hooks best practices
--   Implement proper error handling
--   Add loading states for async operations
--   Use Shadcn/ui components for consistency
+## 🆘 Support
 
-## 📞 Support
+For support and questions:
 
-If you encounter issues:
+-   Create an issue in the repository
+-   Check the documentation
+-   Review the code examples
 
-1. **Review browser console for errors**
-2. **Verify environment variables are set correctly**
-3. **Ensure you're on the correct network (Skynet Chain ID: 619)**
-4. **Check if Web3Auth client ID is working (fallback is hardcoded)**
+## 🔄 Updates
 
-## 📚 Additional Resources
+To update the boilerplate:
 
--   [Next.js Documentation](https://nextjs.org/docs)
--   [Web3Auth Documentation](https://web3auth.io/docs/)
--   [Ethers.js Documentation](https://docs.ethers.io/)
--   [Skynet Documentation](https://docs.skynet.com/)
--   [Shadcn/ui Components](https://ui.shadcn.com/)
--   [Tailwind CSS](https://tailwindcss.com/docs)
+```bash
+# Pull latest changes
+git pull origin main
+
+# Install new dependencies
+npm install
+
+# Check for breaking changes
+npm run build
+```
 
 ---
+
+**Ready to build your Skynet agent workflow application?** 🚀
+
+This boilerplate provides everything you need to get started with agent workflow development on the Skynet blockchain.
