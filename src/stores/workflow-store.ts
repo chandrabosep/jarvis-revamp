@@ -1,14 +1,14 @@
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
-import { WorkflowState } from "@/types";
+import { WorkflowExecutionPayload, WorkflowExecutionResponse } from "@/types";
 
 interface WorkflowStoreState {
-	selectedWorkflow: any;
-	executionHistory: any[];
+	selectedWorkflow: WorkflowExecutionPayload | null;
+	executionHistory: WorkflowExecutionResponse[];
 
 	// Actions
-	setSelectedWorkflow: (workflow: any) => void;
-	addToExecutionHistory: (execution: any) => void;
+	setSelectedWorkflow: (workflow: WorkflowExecutionPayload | null) => void;
+	addToExecutionHistory: (execution: WorkflowExecutionResponse) => void;
 	clearExecutionHistory: () => void;
 	reset: () => void;
 }

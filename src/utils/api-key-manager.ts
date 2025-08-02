@@ -1,6 +1,8 @@
 import axios from "axios";
 import { getAuthWithRetry, ensureUserHasNFT } from "./skynetHelper";
 import { API_KEY_CONFIG } from "@/config/constants";
+import SkyMainBrowser from "@decloudlabs/skynet/lib/services/SkyMainBrowser";
+import { Web3Context, ApiKeyData } from "@/types/wallet";
 
 export class ApiKeyManager {
 	private static instance: ApiKeyManager;
@@ -13,7 +15,10 @@ export class ApiKeyManager {
 		return ApiKeyManager.instance;
 	}
 
-	public async getApiKey(skyBrowser: any, web3Context: any): Promise<string> {
+	public async getApiKey(
+		skyBrowser: SkyMainBrowser,
+		web3Context: Web3Context
+	): Promise<string> {
 		if (this.cachedApiKey) {
 			return this.cachedApiKey;
 		}
@@ -30,8 +35,8 @@ export class ApiKeyManager {
 	}
 
 	private async generateNewApiKey(
-		skyBrowser: any,
-		web3Context: any
+		skyBrowser: SkyMainBrowser,
+		web3Context: Web3Context
 	): Promise<string> {
 		try {
 			const auth = await getAuthWithRetry(skyBrowser);
@@ -68,7 +73,7 @@ export class ApiKeyManager {
 		}
 	}
 
-	private getStoredApiKeyData(): any {
+	private getStoredApiKeyData(): ApiKeyData | null {
 		try {
 			const stored = localStorage.getItem(API_KEY_CONFIG.STORAGE_KEY);
 			return stored ? JSON.parse(stored) : null;
@@ -77,11 +82,11 @@ export class ApiKeyManager {
 		}
 	}
 
-	private isApiKeyValid(data: any): boolean {
+	private isApiKeyValid(data: ApiKeyData): boolean {
 		return Date.now() - data.timestamp < API_KEY_CONFIG.VALIDITY_DURATION;
 	}
 
-	private storeApiKeyData(data: any): void {
+	private storeApiKeyData(data: ApiKeyData): void {
 		try {
 			localStorage.setItem(
 				API_KEY_CONFIG.STORAGE_KEY,

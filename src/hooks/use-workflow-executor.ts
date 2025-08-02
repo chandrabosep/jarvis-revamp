@@ -1,12 +1,10 @@
 import { useCallback } from "react";
 import { workflowExecutor } from "@/utils/workflow-executor";
-import {
-	useWorkflowStore,
-	useExecutionStatusStore,
-	useUIStore,
-} from "@/stores";
+import { useExecutionStatusStore, useUIStore } from "@/stores";
 import { WorkflowExecutionPayload } from "@/types";
 import { STATUS } from "@/config/constants";
+import SkyMainBrowser from "@decloudlabs/skynet/lib/services/SkyMainBrowser";
+import { Web3Context } from "@/types/wallet";
 
 export function useWorkflowExecutor() {
 	const { updateExecutionStatus } = useExecutionStatusStore();
@@ -15,8 +13,8 @@ export function useWorkflowExecutor() {
 	const executeWorkflow = useCallback(
 		async (
 			payload: WorkflowExecutionPayload,
-			skyBrowser: Record<string, unknown>,
-			web3Context: Record<string, unknown>
+			skyBrowser: SkyMainBrowser,
+			web3Context: Web3Context
 		) => {
 			try {
 				// Set running state

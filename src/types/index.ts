@@ -163,6 +163,23 @@ export interface ApiKeyData {
 	timestamp: number;
 }
 
+// Execution Status Types
+export interface ExecutionStatus {
+	isRunning: boolean;
+	responseId?: string;
+	currentSubnet?: string;
+}
+
+// UI State Types
+export interface TestStatus {
+	isRunning: boolean;
+	status: string;
+}
+
+export interface UIState {
+	testStatus: TestStatus;
+}
+
 // Global Window Types
 declare global {
 	interface Window {

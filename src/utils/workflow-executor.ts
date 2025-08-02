@@ -2,6 +2,8 @@ import axios from "axios";
 import { apiKeyManager } from "./api-key-manager";
 import { WORKFLOW_ENDPOINTS } from "@/config/constants";
 import { WorkflowExecutionPayload, WorkflowExecutionResponse } from "@/types";
+import SkyMainBrowser from "@decloudlabs/skynet/lib/services/SkyMainBrowser";
+import { Web3Context } from "@/types/wallet";
 
 export class WorkflowExecutor {
 	private static instance: WorkflowExecutor;
@@ -18,8 +20,8 @@ export class WorkflowExecutor {
 	 */
 	public async executeWorkflow(
 		payload: WorkflowExecutionPayload,
-		skyBrowser: any,
-		web3Context: any,
+		skyBrowser: SkyMainBrowser,
+		web3Context: Web3Context,
 		onStatusUpdate?: (data: WorkflowExecutionResponse) => void
 	): Promise<string> {
 		// Get API key

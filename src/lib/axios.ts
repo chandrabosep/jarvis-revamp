@@ -1,5 +1,7 @@
 import axios from "axios";
 import { apiKeyManager } from "@/utils/api-key-manager";
+import SkyMainBrowser from "@decloudlabs/skynet/lib/services/SkyMainBrowser";
+import { Web3Context } from "@/types/wallet";
 
 const axiosInstance = axios.create({
 	baseURL: process.env.NEXT_PUBLIC_API_BASE_URL,
@@ -9,8 +11,8 @@ const axiosInstance = axios.create({
 });
 
 export const getAxiosInstanceWithApiKey = async (
-	skyBrowser?: any,
-	web3Context?: any
+	skyBrowser?: SkyMainBrowser,
+	web3Context?: Web3Context
 ) => {
 	if (skyBrowser && web3Context) {
 		try {

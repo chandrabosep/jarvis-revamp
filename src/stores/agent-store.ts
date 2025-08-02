@@ -1,13 +1,13 @@
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
-import { Agent } from "@/types";
+import { AgentDetail } from "@/types";
 
 interface AgentState {
-	selectedAgents: { [id: string]: any };
+	selectedAgents: { [id: string]: AgentDetail };
 
 	// Actions
-	setSelectedAgents: (agents: { [id: string]: any }) => void;
-	addAgent: (agent: any) => void;
+	setSelectedAgents: (agents: { [id: string]: AgentDetail }) => void;
+	addAgent: (agent: AgentDetail) => void;
 	removeAgent: (agentId: string) => void;
 	reset: () => void;
 }
