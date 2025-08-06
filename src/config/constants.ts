@@ -51,10 +51,10 @@ export const NETWORK_CONFIG = {
 
 // App Configuration
 export const APP_CONFIG = {
-	NAME: "Skynet Agent Workflow Boilerplate",
+	NAME: "Jarvis AI",
 	DESCRIPTION:
-		"Complete boilerplate for building agent workflow applications with Web3 integration",
-	VERSION: "1.0.0",
+		"Jarvis AI - The Everything AI",
+	VERSION: "2.0.0",
 	SUPPORTED_NETWORKS: ["SKYNET"],
 } as const;
 

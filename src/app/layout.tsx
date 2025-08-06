@@ -3,14 +3,13 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { Web3AuthProvider } from "@/providers/Web3AuthProvider";
 import { Toaster } from "sonner";
-import Link from "next/link";
+import { APP_CONFIG } from "@/config/constants";
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-	title: "Web3 NFT Agent Boilerplate",
-	description:
-		"A foundational Next.js application for Web3 development with NFT minting and agent management",
+	title: APP_CONFIG.NAME,
+	description: APP_CONFIG.DESCRIPTION,
 };
 
 export default function RootLayout({
@@ -23,18 +22,6 @@ export default function RootLayout({
 			<body className={inter.className}>
 				<Web3AuthProvider>
 					<div className="min-h-screen bg-background">
-						<header className="border-b">
-							<div className="container mx-auto px-4 py-4">
-								<nav className="flex items-center justify-between">
-									<Link
-										href="/"
-										className="text-xl font-bold"
-									>
-										Web3 NFT Boilerplate
-									</Link>
-								</nav>
-							</div>
-						</header>
 						<main>{children}</main>
 					</div>
 					<Toaster />
