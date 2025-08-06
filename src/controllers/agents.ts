@@ -1,12 +1,21 @@
-import axiosInstance from "@/lib/axios";
-import { AgentResponse, AgentDetailResponse, AgentDetail } from "@/types";
+import { getAxiosInstanceWithApiKey } from "@/lib/axios";
+import { AgentResponse, AgentDetailResponse } from "@/types";
+import SkyMainBrowser from "@decloudlabs/skynet/lib/services/SkyMainBrowser";
+import { Web3Context } from "@/types/wallet";
 
-// Agent Queries
-export const getAgents = async (params?: {
-	search?: string;
-	limit?: number;
-	offset?: number;
-}): Promise<AgentResponse> => {
+export const getAgents = async (
+	params?: {
+		search?: string;
+		limit?: number;
+		offset?: number;
+	},
+	skyBrowser?: SkyMainBrowser,
+	web3Context?: Web3Context
+): Promise<AgentResponse> => {
+	const axiosInstance = await getAxiosInstanceWithApiKey(
+		skyBrowser,
+		web3Context
+	);
 	const response = await axiosInstance.get("/agents", {
 		params: {
 			search: params?.search,
@@ -17,12 +26,20 @@ export const getAgents = async (params?: {
 	return response.data;
 };
 
-export const getUserAgents = async (params?: {
-	search?: string;
-	limit?: number;
-	offset?: number;
-	address: string;
-}): Promise<AgentResponse> => {
+export const getUserAgents = async (
+	params: {
+		search?: string;
+		limit?: number;
+		offset?: number;
+		address: string;
+	},
+	skyBrowser?: SkyMainBrowser,
+	web3Context?: Web3Context
+): Promise<AgentResponse> => {
+	const axiosInstance = await getAxiosInstanceWithApiKey(
+		skyBrowser,
+		web3Context
+	);
 	const response = await axiosInstance.get("/agents", {
 		params: {
 			search: params?.search,
@@ -35,8 +52,14 @@ export const getUserAgents = async (params?: {
 };
 
 export const getAgentById = async (
-	id: string
+	id: string,
+	skyBrowser?: SkyMainBrowser,
+	web3Context?: Web3Context
 ): Promise<AgentDetailResponse> => {
+	const axiosInstance = await getAxiosInstanceWithApiKey(
+		skyBrowser,
+		web3Context
+	);
 	const response = await axiosInstance.get(`/agents/${id}`);
 	return response.data;
 };
