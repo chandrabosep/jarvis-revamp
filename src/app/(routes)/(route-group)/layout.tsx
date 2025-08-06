@@ -4,11 +4,17 @@ import React from "react";
 
 export default function layout({ children }: { children: React.ReactNode }) {
 	return (
-		<div>
-			<SidebarProvider>
+		<div className="">
+			<SidebarProvider
+				style={
+					{
+						"--sidebar-width": "350px",
+					} as React.CSSProperties
+				}
+			>
 				<AppSidebar />
 			</SidebarProvider>
-			{children}
+			<div className="w-full h-full">{children}</div>
 		</div>
 	);
 }
