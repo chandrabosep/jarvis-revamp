@@ -95,11 +95,17 @@
 	--sidebar-ring: #464646;
 }
 
+:root,
+html,
+body {
+	@apply h-full w-full;
+}
+
 @layer base {
 	* {
 		@apply border-border outline-ring/50;
 	}
 	body {
-		@apply bg-[--color-bg] text-[--color-text];
+		@apply bg-[--color-bg] text-foreground;
 	}
 }

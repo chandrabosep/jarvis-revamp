@@ -4,7 +4,7 @@ import React from "react";
 
 export default function layout({ children }: { children: React.ReactNode }) {
 	return (
-		<div className="">
+		<div className="flex h-full w-full">
 			<SidebarProvider
 				style={
 					{
@@ -14,7 +14,7 @@ export default function layout({ children }: { children: React.ReactNode }) {
 			>
 				<AppSidebar />
 			</SidebarProvider>
-			<div className="w-full h-full">{children}</div>
+			<div className="w-full h-full flex-1 p-3">{children}</div>
 		</div>
 	);
 }

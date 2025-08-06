@@ -21,7 +21,7 @@ import { Label } from "../ui/label";
 import * as LucideIcons from "lucide-react";
 import { MoreVerticalIcon } from "lucide-react";
 
-const CHAT_OPTIONS = [5, 10, 15, 20] as const;
+const CHAT_OPTIONS = [1, 5, 10, 15, 20] as const;
 
 const NAV_ITEMS = [
 	{ title: "Write a poem about the ocean", url: "/", icon: "HomeIcon" },
@@ -94,6 +94,8 @@ export default function ChatSidebar() {
 		[isSelectOpen]
 	);
 
+	const visibleNavItems = NAV_ITEMS.slice(0, chatCount);
+
 	return (
 		<Sidebar
 			ref={sidebarRef}
@@ -131,7 +133,7 @@ export default function ChatSidebar() {
 								}
 							>
 								<SelectTrigger
-									className={`!w-fit !h-7 px-[3.5px] py-0 bg-background border-0 text-sm rounded-md ${
+									className={`!w-fit !h-7 px-[3.5px] py-0 !gap-x-1 bg-background border-0 text-sm rounded-md ${
 										isExpanded ? "px-[6px]" : "px-[3.5px]"
 									}`}
 								>
@@ -158,7 +160,7 @@ export default function ChatSidebar() {
 							isExpanded ? "items-start" : "items-center"
 						}`}
 					>
-						{NAV_ITEMS.map((item) => {
+						{visibleNavItems.map((item) => {
 							const LucideIcon = (LucideIcons as any)[item.icon];
 
 							return (
@@ -194,9 +196,9 @@ export default function ChatSidebar() {
 													}
 													defaultValue="Left"
 												>
-                                                    <SelectTrigger>
-                                                        <MoreVerticalIcon className="!size-4 flex-shrink-0" />
-                                                    </SelectTrigger>
+													<SelectTrigger>
+														<MoreVerticalIcon className="!size-4 flex-shrink-0" />
+													</SelectTrigger>
 													<SelectContent>
 														{["Left", "Right"].map(
 															(side) => (
