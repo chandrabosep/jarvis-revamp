@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
-import { UIState, TestStatus } from "@/types";
+import { TestStatus } from "@/types";
 
 interface UIStoreState {
 	testStatus: TestStatus;
