@@ -14,7 +14,7 @@ export default function ChatCard({
 }) {
 	return (
 		<div
-			className="cursor-pointer relative w-64 bg-input border border-border rounded-2xl px-3 py-4 flex flex-col gap-y-4.5"
+			className="cursor-pointer relative w-64 bg-[#2E3336] border border-border rounded-2xl px-3 py-4 flex flex-col gap-y-4.5"
 			onClick={onClick}
 		>
 			{/* The image now only covers the area above the text */}

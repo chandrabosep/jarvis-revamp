@@ -9,7 +9,7 @@ interface GlobalStore {
 	accountNFTId: string | null;
 
 	// Mode and Agent Management
-	mode: "llm" | "agent";
+	mode: "chat" | "agent";
 	prompt: string;
 
 	// Auto Mode
@@ -19,11 +19,8 @@ interface GlobalStore {
 	setUserAddress: (address: string | null) => void;
 	setAccountNFTId: (nftId: string | null) => void;
 
-	setMode: (mode: "llm" | "agent") => void;
+	setMode: (mode: "chat" | "agent") => void;
 	setPrompt: (prompt: string) => void;
-
-	// Actions - Auto Mode
-	setAutoMode: (autoMode: boolean) => void;
 
 	reset: () => void;
 }
@@ -35,7 +32,7 @@ export const useGlobalStore = create<GlobalStore>()(
 				// Initial State
 				userAddress: null,
 				accountNFTId: null,
-				mode: "llm",
+				mode: "agent",
 				prompt: "",
 				autoMode: false,
 
@@ -47,17 +44,13 @@ export const useGlobalStore = create<GlobalStore>()(
 				setMode: (mode) => set({ mode }),
 				setPrompt: (prompt) => set({ prompt }),
 
-				// Auto Mode Action
-				setAutoMode: (autoMode) => set({ autoMode }),
-
 				// Reset
 				reset: () =>
 					set({
 						userAddress: null,
 						accountNFTId: null,
-						mode: "llm",
+						mode: "agent",
 						prompt: "",
-						autoMode: false,
 					}),
 			}),
 			{
@@ -67,7 +60,6 @@ export const useGlobalStore = create<GlobalStore>()(
 					accountNFTId: state.accountNFTId,
 					mode: state.mode,
 					prompt: state.prompt,
-					autoMode: state.autoMode,
 				}),
 			}
 		)

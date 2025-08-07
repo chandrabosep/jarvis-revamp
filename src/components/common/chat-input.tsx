@@ -1,60 +1,65 @@
 "use client";
-import React, { useState } from "react";
+import React from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { LucideArrowUp, Plus } from "lucide-react";
+import { LucideArrowUp } from "lucide-react";
 import { ChatInputProps } from "@/types/types";
+
+import Marketplace from "./marketplace";
 
 export default function ChatInput({
 	onSend,
 	chatHistory,
-	autoMode,
-	setAutoMode,
+	mode,
+	setMode,
 	prompt,
 	setPrompt,
 }: ChatInputProps) {
 	return (
-		<div className="flex flex-col gap-y-2">
-			<div className="flex items-center justify-between gap-2">
-				<Button size="sm" className="w-fit">
-					<Plus />
-				</Button>
-				<div className="flex items-center gap-2 ml-auto">
+		<div className="flex flex-col gap-y-2 w-full">
+			<div className="flex items-center gap-2 w-full">
+				<div className="flex items-center gap-2">
 					<button
 						className={`
-							relative w-23 h-7 rounded-full cursor-pointer transition-colors duration-200
+							relative  h-7 rounded-sm cursor-pointer transition-colors duration-200
 							flex items-center justify-center overflow-hidden text-xs font-medium font-sans  
-							${autoMode === true ? "bg-accent" : "bg-input border border-border"}
-							${autoMode === true ? "flex-row" : "flex-row-reverse"}
-							text-white
+							${
+								mode === "agent"
+									? "bg-accent text-accent-foreground w-30"
+									: "bg-input border border-border text-foreground"
+							}
+							${mode === "agent" ? "flex-row" : "flex-row-reverse"}
 							leading-none whitespace-nowrap p-0
 						`}
-						onClick={() => setAutoMode(!autoMode)}
+						onClick={() =>
+							setMode(mode === "agent" ? "chat" : "agent")
+						}
 						type="button"
-						aria-pressed={autoMode === true}
+						aria-pressed={mode === "agent"}
 					>
 						<span
 							className={`
 								flex-1 z-[1] font-medium transition-colors duration- pt-0.5
-								${autoMode === true ? "text-left ml-4 mr-0" : "text-right ml-0 mr-4"}
+								${mode === "agent" ? "text-right ml-0 mr-7" : "text-left ml-7 mr-0"}
 							`}
 						>
-							{autoMode === true ? "Auto On" : "Auto Off"}
+							{mode === "agent" ? "Agent Mode" : "Chat Mode"}
 						</span>
 						<div
 							className={`
-								absolute top-1/2 left-1 w-[18px] h-[18px] bg-[#CDD1D4] rounded-full
+								absolute top-1/2 left-1 w-[18px] h-[18px] bg-[#CDD1D4] rounded-sm
 								shadow-[0_2px_4px_rgba(0,0,0,0.2)] z-[2] transition-transform duration-[750ms] ease-[cubic-bezier(0.4,0,0.2,1)]
 							`}
 							style={{
 								transform:
-									autoMode === true
-										? "translateX(62px) translateY(-50%)"
+									mode === "agent"
+										? "translateX(92px) translateY(-50%)"
 										: "translateX(0) translateY(-50%)",
 							}}
 						/>
 					</button>
 				</div>
+				<Marketplace />
 			</div>
 
 			<div className="w-full flex items-center bg-input rounded-lg px-4 border border-border h-13">

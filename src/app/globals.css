@@ -109,3 +109,25 @@ body {
 		@apply bg-[--color-bg] text-foreground;
 	}
 }
+
+/* Hide scrollbar by default */
+.scrollbar-thin::-webkit-scrollbar {
+	@apply w-1 h-1;
+	opacity: 0;
+	transition: opacity 0.2s;
+	pointer-events: none;
+}
+
+/* Show scrollbar only while actively scrolling (add .scrolling class via JS on scroll) */
+.scrollbar-thin.scrolling::-webkit-scrollbar {
+	opacity: 1;
+	pointer-events: auto;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+	@apply bg-border rounded-md;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+	@apply bg-transparent;
+}

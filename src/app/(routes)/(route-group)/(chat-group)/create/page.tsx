@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 
 export default function CreatePage() {
-	const { autoMode, prompt, setAutoMode, setPrompt } = useGlobalStore();
+	const { mode, prompt, setMode, setPrompt } = useGlobalStore();
 	const router = useRouter();
 
 	const handleClick = (prompt: string) => {
@@ -22,14 +22,7 @@ export default function CreatePage() {
 
 	return (
 		<div className="flex flex-col items-center h-full w-full relative">
-			<div className="flex flex-col items-center justify-center gap-y-10 h-3/4">
-				<Image
-					src="/full-logo.svg"
-					alt="create-page-bg"
-					width={1000}
-					height={1000}
-					className="w-56 h-fit"
-				/>
+			<div className="h-fit flex flex-col items-center justify-center gap-y-10 mt-[20%]">
 				<div className="flex items-center justify-center gap-6">
 					<ChatCard
 						title="Mint an NFT collection"
@@ -67,8 +60,8 @@ export default function CreatePage() {
 				<ChatInput
 					onSend={() => {}}
 					chatHistory={[]}
-					autoMode={autoMode}
-					setAutoMode={setAutoMode}
+					mode={mode}
+					setMode={setMode}
 					prompt={prompt}
 					setPrompt={setPrompt}
 				/>

@@ -1,8 +1,8 @@
 export interface ChatInputProps {
 	onSend: (message: string, selectedAgentId?: string) => void;
 	chatHistory: { userPrompt: string; steps: IStep[] }[];
-	autoMode: boolean;
+	mode: "chat" | "agent";
+	setMode: (value: "chat" | "agent") => void;
 	prompt: string;
-	setAutoMode: (value: boolean) => void;
 	setPrompt: (value: string) => void;
 }
