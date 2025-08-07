@@ -7,12 +7,12 @@ import { ChatInputProps } from "@/types/types";
 
 export default function ChatInput({
 	onSend,
-	suggestions,
 	chatHistory,
 	autoMode,
 	setAutoMode,
+	prompt,
+	setPrompt,
 }: ChatInputProps) {
-	const [value, setValue] = useState("");
 	return (
 		<div className="flex flex-col gap-y-2">
 			<div className="flex items-center justify-between gap-2">
@@ -61,9 +61,9 @@ export default function ChatInput({
 				<Input
 					className="flex-1 px-0 h-full border-none shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 text-foreground placeholder:text-muted-foreground text-base"
 					type="text"
-					placeholder="Give new task..."
-					value={value}
-					onChange={(e) => setValue(e.target.value)}
+					placeholder={prompt}
+					value={prompt}
+					onChange={(e) => setPrompt(e.target.value)}
 				/>
 				<Button
 					size="icon"
@@ -73,21 +73,6 @@ export default function ChatInput({
 				>
 					<LucideArrowUp className="size-5.5" />
 				</Button>
-			</div>
-			<div className="flex flex-row items-center gap-x-2.5">
-				{suggestions.map(({ icon, title, suggestion }, index) => (
-					<Button
-						key={index}
-						className="flex flex-row items-center gap-x-2 border border-border rounded-full"
-						data-suggestion-text={suggestion}
-						size="sm"
-						onClick={() => {}}
-						type="button"
-					>
-						{icon}
-						<p className="text-sm font-medium">{title}</p>
-					</Button>
-				))}
 			</div>
 		</div>
 	);
