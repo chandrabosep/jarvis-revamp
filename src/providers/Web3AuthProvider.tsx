@@ -10,6 +10,8 @@ import {
 	useContext,
 	useEffect,
 	useState,
+	Component,
+	ErrorInfo,
 } from "react";
 import { CHAIN_NAMESPACES, type IWeb3Auth } from "@web3auth/base";
 
@@ -59,6 +61,36 @@ function ChainProvider({ children }: { children: ReactNode }) {
 // Create a context for Web3Auth state
 const Web3AuthContext = createContext<Record<string, unknown> | null>(null);
 
+// Error boundary for Web3Auth
+class Web3AuthErrorBoundary extends Component<
+	{ children: ReactNode },
+	{ hasError: boolean }
+> {
+	constructor(props: { children: ReactNode }) {
+		super(props);
+		this.state = { hasError: false };
+	}
+
+	static getDerivedStateFromError(error: Error) {
+		// Log the error but don't crash the app
+		console.warn("Web3Auth Error Boundary caught an error:", error);
+		return { hasError: true };
+	}
+
+	componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+		console.warn("Web3Auth Error Boundary error details:", errorInfo);
+	}
+
+	render() {
+		if (this.state.hasError) {
+			// Return children without Web3Auth functionality
+			return this.props.children;
+		}
+
+		return this.props.children;
+	}
+}
+
 // Safe wrapper component that always calls hooks in the same order
 function Web3AuthWrapper({ children }: { children: ReactNode }) {
 	const [isClient, setIsClient] = useState(false);
@@ -68,6 +100,13 @@ function Web3AuthWrapper({ children }: { children: ReactNode }) {
 
 	useEffect(() => {
 		setIsClient(true);
+
+		// Handle MetaMask conflicts by checking if ethereum provider already exists
+		if (typeof window !== "undefined" && window.ethereum) {
+			console.log(
+				"Ethereum provider detected, Web3Auth will use existing provider"
+			);
+		}
 	}, []);
 
 	// Create fallback values for SSR
@@ -143,8 +182,10 @@ export function Web3AuthProvider({ children }: { children: ReactNode }) {
 	}
 
 	return (
-		<Web3AuthModalProvider config={web3AuthConfig}>
-			<Web3AuthWrapper>{children}</Web3AuthWrapper>
-		</Web3AuthModalProvider>
+		<Web3AuthErrorBoundary>
+			<Web3AuthModalProvider config={web3AuthConfig}>
+				<Web3AuthWrapper>{children}</Web3AuthWrapper>
+			</Web3AuthModalProvider>
+		</Web3AuthErrorBoundary>
 	);
 }

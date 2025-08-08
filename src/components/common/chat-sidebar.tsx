@@ -23,16 +23,16 @@ import { MoreVerticalIcon } from "lucide-react";
 
 const CHAT_OPTIONS = [1, 5, 10, 15, 20] as const;
 
-const NAV_ITEMS = [
-	{ title: "Write a poem about the ocean", url: "/", icon: "HomeIcon" },
-	{ title: "Summarize this article", url: "/history", icon: "HistoryIcon" },
-	{ title: "Brainstorm startup ideas", url: "/create", icon: "PlusIcon" },
+const NAV_ITEMS = [	
+	{ title: "Write a poem about the ocean", url: "/chat", icon: "HomeIcon" },
+	{ title: "Summarize this article", url: "/chat", icon: "HistoryIcon" },
+	{ title: "Brainstorm startup ideas", url: "/chat", icon: "PlusIcon" },
 	{
 		title: "Explain quantum computing simply",
-		url: "/quantum",
+		url: "/chat",
 		icon: "CpuIcon",
 	},
-	{ title: "Translate to French", url: "/translate", icon: "LanguagesIcon" },
+	{ title: "Translate to French", url: "/chat", icon: "LanguagesIcon" },
 ] as const;
 
 export default function ChatSidebar() {

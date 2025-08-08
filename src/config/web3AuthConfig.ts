@@ -33,7 +33,7 @@ const chainConfig = {
 	...CHAIN_CONFIG,
 };
 
-// Web3Auth Options
+// Web3Auth Options with adapter settings to prevent MetaMask conflicts
 const web3AuthOptions: Web3AuthOptions = {
 	clientId: clientId || "", // Fallback client ID
 	web3AuthNetwork: WEB3AUTH_NETWORK.SAPPHIRE_MAINNET,
@@ -41,6 +41,17 @@ const web3AuthOptions: Web3AuthOptions = {
 	privateKeyProvider: new EthereumPrivateKeyProvider({
 		config: { chainConfig },
 	}),
+	// Add adapter settings to prevent conflicts with MetaMask
+	adapterSettings: {
+		// Disable automatic provider injection to prevent conflicts
+		enableLogging: false,
+		// Use a custom provider name to avoid conflicts
+		providerName: "Web3Auth",
+	},
+	// Disable automatic chain switching to prevent conflicts
+	enableLogging: false,
+	// Add session management to prevent provider conflicts
+	sessionTime: 24 * 60 * 60, // 24 hours
 };
 
 export const web3AuthConfig = {

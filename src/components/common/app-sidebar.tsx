@@ -36,7 +36,7 @@ const navItems = [
 	{
 		icon: <Wallet2Icon />,
 		title: "Manage Funds",
-		url: "/manage-funds",
+		url: "/",
 	},
 ];
 
@@ -60,7 +60,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 					<SidebarHeader className="pt-4 pb-6">
 						<SidebarMenu>
 							<SidebarMenuItem>
-								<Link href="/dashboard">
+								<Link href="/create">
 									<Image
 										src="logo.svg"
 										alt="logo"
