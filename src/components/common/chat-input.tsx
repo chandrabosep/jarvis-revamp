@@ -21,12 +21,12 @@ export default function ChatInput({
 				<div className="flex items-center gap-2">
 					<button
 						className={`
-							relative  h-7 rounded-sm cursor-pointer transition-colors duration-200
+							relative h-7 rounded-full cursor-pointer transition-colors duration-200
 							flex items-center justify-center overflow-hidden text-xs font-medium font-sans  
 							${
 								mode === "agent"
-									? "bg-accent text-accent-foreground w-30"
-									: "bg-input border border-border text-foreground"
+									? "bg-accent text-accent-foreground w-27"
+									: "bg-input border border-border text-foreground w-26"
 							}
 							${mode === "agent" ? "flex-row" : "flex-row-reverse"}
 							leading-none whitespace-nowrap p-0
@@ -47,7 +47,9 @@ export default function ChatInput({
 						</span>
 						<div
 							className={`
-								absolute top-1/2 left-1 w-[18px] h-[18px] bg-[#CDD1D4] rounded-sm
+								absolute top-1/2 ${
+									mode === "agent" ? "-left-1.5" : "left-1"
+								} size-4.5 bg-[#CDD1D4] rounded-full
 								shadow-[0_2px_4px_rgba(0,0,0,0.2)] z-[2] transition-transform duration-[750ms] ease-[cubic-bezier(0.4,0,0.2,1)]
 							`}
 							style={{

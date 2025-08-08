@@ -58,7 +58,6 @@ export const useGlobalStore = create<GlobalStore>()(
 				partialize: (state) => ({
 					userAddress: state.userAddress,
 					accountNFTId: state.accountNFTId,
-					mode: state.mode,
 					prompt: state.prompt,
 				}),
 			}
