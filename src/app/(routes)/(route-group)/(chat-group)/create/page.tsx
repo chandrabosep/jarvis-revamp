@@ -21,7 +21,7 @@ export default function CreatePage() {
 	}, [setPrompt]);
 
 	return (
-		<div className="flex flex-col items-center h-full w-full relative">
+		<div className="flex flex-col items-center h-full w-full relative gap-y-20">
 			<div className="h-fit flex flex-col items-center justify-center gap-y-10 mt-[20%]">
 				<div className="flex items-center justify-center gap-6">
 					<ChatCard
@@ -56,7 +56,7 @@ export default function CreatePage() {
 					/>
 				</div>
 			</div>
-			<div className="absolute bottom-4 w-full">
+			<div className=" w-fit min-w-4xl">
 				<ChatInput
 					onSend={() => {}}
 					chatHistory={[]}
