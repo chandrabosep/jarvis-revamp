@@ -51,7 +51,7 @@ export default function ChatCard({
 					</div>
 					<div className="flex-1 relative">
 						<div className="h-1 bg-[#CDD1D4] rounded-full"></div>
-						<div className="border border-border/30 absolute left-[40%] top-1/2 transform -translate-x-1/2 -translate-y-1/2 w-8 h-5 text-background/80 bg-[#CDD1D4] rounded-xl flex items-center justify-center">
+						<div className="border border-border/30 absolute left-[40%] top-1/2 transform -translate-x-1/2 -translate-y-1/2 w-8.5 h-6 text-background/80 bg-[#CDD1D4] rounded-xl flex items-center justify-center">
 							{icon}
 						</div>
 					</div>
