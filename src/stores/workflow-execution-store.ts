@@ -12,7 +12,12 @@ export interface SubnetStatus {
 export interface WorkflowExecutionStatus {
 	requestId: string;
 	userAddress: string;
-	workflowStatus: "pending" | "in_progress" | "completed" | "failed";
+	workflowStatus:
+		| "pending"
+		| "in_progress"
+		| "completed"
+		| "failed"
+		| "stopped";
 	percentage: number;
 	totalSubnets: number;
 	completedSubnets: number;
@@ -36,6 +41,7 @@ interface WorkflowExecutionStoreState {
 	setPollingStatus: (isPolling: boolean) => void;
 	clearCurrentExecution: () => void;
 	clearExecutionHistory: () => void;
+	stopCurrentExecution: () => void;
 	reset: () => void;
 }
 
@@ -67,6 +73,20 @@ export const useWorkflowExecutionStore = create<WorkflowExecutionStoreState>()(
 		clearCurrentExecution: () => set({ currentExecution: null }),
 
 		clearExecutionHistory: () => set({ executionHistory: [] }),
+
+		stopCurrentExecution: () =>
+			set((state) => ({
+				...state,
+				isPolling: false,
+				currentExecution: state.currentExecution
+					? {
+							...state.currentExecution,
+							workflowStatus: "stopped" as const,
+							updatedAt: new Date().toISOString(),
+							lastActivity: new Date().toISOString(),
+					  }
+					: null,
+			})),
 
 		reset: () =>
 			set({

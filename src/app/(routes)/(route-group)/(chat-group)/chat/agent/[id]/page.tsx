@@ -1,6 +1,7 @@
 "use client";
 import ChatInput from "@/components/common/chat-input";
-import React, { useEffect, useState, useRef } from "react";
+import { ChatMessage } from "@/components/common/chat-message";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useGlobalStore } from "@/stores/global-store";
 import { useParams, useRouter } from "next/navigation";
 import { getAgentById } from "@/controllers/agents";
@@ -9,6 +10,13 @@ import { useWallet } from "@/hooks/use-wallet";
 import { AgentDetail } from "@/types";
 import { workflowExecutor } from "@/utils/workflow-executor";
 import { useWorkflowExecutionStore } from "@/stores/workflow-execution-store";
+
+type ChatMsg = {
+	id: string;
+	type: "user" | "response" | "question" | "answer";
+	content: string;
+	timestamp: Date;
+};
 
 export default function AgentChatPage() {
 	const {
@@ -25,25 +33,14 @@ export default function AgentChatPage() {
 	const [isLoading, setIsLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 	const [isExecuting, setIsExecuting] = useState(false);
-	const [chatMessages, setChatMessages] = useState<
-		Array<{
-			id: string;
-			type: "user" | "agent" | "system";
-			content: string;
-			timestamp: Date;
-		}>
-	>([]);
+	const [chatMessages, setChatMessages] = useState<ChatMsg[]>([]);
 	const { skyBrowser, address } = useWallet();
 
-	// Workflow execution store
-	const {
-		setCurrentExecution,
-		updateExecutionStatus,
-		setPollingStatus,
-		currentExecution,
-	} = useWorkflowExecutionStore();
+	const { setPollingStatus, stopCurrentExecution, currentExecution } =
+		useWorkflowExecutionStore();
 
 	const lastLoadedAgentId = useRef<string | null>(null);
+	const messagesEndRef = useRef<HTMLDivElement>(null);
 
 	const handleModeChange = (newMode: "chat" | "agent") => {
 		if (newMode === "chat") {
@@ -54,12 +51,28 @@ export default function AgentChatPage() {
 		}
 	};
 
-	const handlePromptSubmit = async () => {
+	// Helper: Parse agent response from workflow result
+	const parseAgentResponse = (subnetData: string): string | null => {
+		try {
+			const parsed = JSON.parse(subnetData);
+			const data = parsed?.data;
+			if (data?.data?.choices?.[0]?.message?.content) {
+				return data.data.choices[0].message.content;
+			}
+			if (data?.message) {
+				return data.message;
+			}
+			return null;
+		} catch {
+			return null;
+		}
+	};
+
+	const handlePromptSubmit = useCallback(async () => {
 		if (prompt.trim() && selectedAgent && "subnet_list" in selectedAgent) {
-			// Add user message to chat
-			const userMessage = {
+			const userMessage: ChatMsg = {
 				id: Date.now().toString(),
-				type: "user" as const,
+				type: "user",
 				content: prompt,
 				timestamp: new Date(),
 			};
@@ -67,109 +80,52 @@ export default function AgentChatPage() {
 
 			try {
 				setIsExecuting(true);
-				console.log(
-					`Executing workflow for ${selectedAgent.name}:`,
-					prompt
-				);
 
 				if (skyBrowser && address) {
-					// Add system message indicating workflow start
-					const systemMessage = {
-						id: (Date.now() + 1).toString(),
-						type: "system" as const,
-						content: `Starting workflow execution for ${selectedAgent.name}...`,
-						timestamp: new Date(),
-					};
-					setChatMessages((prev) => [...prev, systemMessage]);
-
-					const requestId =
-						await workflowExecutor.executeAgentWorkflow(
-							selectedAgent as AgentDetail,
-							prompt,
-							address,
-							skyBrowser,
-							{ address },
-							(statusData) => {
-								console.log(
-									"Workflow status update:",
-									statusData
+					const onStatusUpdate = (data: any) => {
+						// Only show completed responses, and only for subnets that are done
+						if (
+							data &&
+							data.workflowStatus === "completed" &&
+							Array.isArray(data.subnets)
+						) {
+							const completedSubnets = data.subnets.filter(
+								(s: any) => s.status === "done"
+							);
+							// Only show the first completed subnet's response for now
+							if (completedSubnets.length > 0) {
+								const subnet = completedSubnets[0];
+								const agentResponse = parseAgentResponse(
+									subnet.data
 								);
-
-								// Update the workflow execution store with the status data
-								if (statusData.workflowStatus) {
-									const executionStatus = {
-										requestId:
-											statusData.requestId || requestId,
-										userAddress: address,
-										workflowStatus:
-											statusData.workflowStatus as
-												| "pending"
-												| "in_progress"
-												| "completed"
-												| "failed",
-										percentage: statusData.percentage || 0,
-										totalSubnets:
-											statusData.totalSubnets || 0,
-										completedSubnets:
-											statusData.completedSubnets || 0,
-										authUrl: statusData.authUrl || null,
-										authRequiredSubnet:
-											statusData.authRequiredSubnet ||
-											null,
-										createdAt:
-											statusData.createdAt ||
-											new Date().toISOString(),
-										updatedAt:
-											statusData.updatedAt ||
-											new Date().toISOString(),
-										lastActivity:
-											statusData.lastActivity ||
-											new Date().toISOString(),
-										subnets: statusData.subnets || [],
-									};
-
-									if (
-										currentExecution?.requestId ===
-										executionStatus.requestId
-									) {
-										updateExecutionStatus(executionStatus);
-									} else {
-										setCurrentExecution(executionStatus);
-									}
-								}
-
-								// Handle status updates here
-								if (
-									statusData.workflowStatus === "completed" ||
-									statusData.workflowStatus === "failed"
-								) {
-									setIsExecuting(false);
-									setPollingStatus(false);
-
-									// Add completion message to chat
-									const completionMessage = {
-										id: (Date.now() + 2).toString(),
-										type: "system" as const,
-										content: `Workflow ${
-											statusData.workflowStatus ===
-											"completed"
-												? "completed successfully"
-												: "failed"
-										}.`,
-										timestamp: new Date(),
-									};
+								if (agentResponse) {
 									setChatMessages((prev) => [
 										...prev,
-										completionMessage,
+										{
+											id: `agent_${Date.now()}`,
+											type: "response",
+											content: agentResponse,
+											timestamp: new Date(),
+										},
 									]);
-								} else {
-									setPollingStatus(true);
 								}
+								setIsExecuting(false);
+								setPollingStatus(false);
 							}
-						);
+						}
+					};
 
-					console.log("Workflow started with ID:", requestId);
-					setPrompt(""); // Clear prompt after successful submission
+					await workflowExecutor.executeAgentWorkflow(
+						selectedAgent as AgentDetail,
+						prompt,
+						address,
+						skyBrowser,
+						{ address },
+						onStatusUpdate
+					);
+
+					setPollingStatus(true);
+					setPrompt("");
 				} else {
 					console.warn(
 						"Missing required context for workflow execution"
@@ -181,7 +137,24 @@ export default function AgentChatPage() {
 				setPollingStatus(false);
 			}
 		}
+	}, [
+		prompt,
+		selectedAgent,
+		skyBrowser,
+		address,
+		setPrompt,
+		setPollingStatus,
+	]);
+
+	const handleStopExecution = () => {
+		stopCurrentExecution();
+		setIsExecuting(false);
+		setPollingStatus(false);
 	};
+
+	useEffect(() => {
+		messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+	}, [chatMessages]);
 
 	useEffect(() => {
 		let isMounted = true;
@@ -220,7 +193,7 @@ export default function AgentChatPage() {
 		return () => {
 			isMounted = false;
 		};
-	}, [agentId]);
+	}, [agentId, selectedAgent, setSelectedAgent]);
 
 	if (isLoading) {
 		return (
@@ -249,29 +222,43 @@ export default function AgentChatPage() {
 
 	return (
 		<div className="relative w-full h-full flex flex-col">
-			{/* Status indicator */}
-			{isExecuting && !currentExecution && (
-				<div className="flex-shrink-0 p-4 border-b bg-blue-50 border-blue-200">
-					<div className="flex items-center gap-2">
-						<div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-						<span className="text-sm text-blue-800">
-							Executing workflow for {selectedAgent?.name}...
-						</span>
+			<div className="flex-1 overflow-y-auto p-4 pb-24 min-h-0">
+				{chatMessages.length === 0 ? (
+					<div className="flex items-center justify-center h-full min-h-[400px]">
+						<div className="text-center text-gray-500">
+							<p className="text-lg font-medium">
+								Start a conversation with {selectedAgent?.name}
+							</p>
+							<p className="text-sm mt-2 text-gray-400">
+								Type your request below to begin
+							</p>
+						</div>
 					</div>
-				</div>
-			)}
+				) : (
+					<div className="space-y-4">
+						{chatMessages.map((message) => (
+							<ChatMessage key={message.id} message={message} />
+						))}
+						<div ref={messagesEndRef} />
+					</div>
+				)}
+			</div>
 
-			{/* Chat Input - Fixed at bottom */}
-			<div className="absolute bottom-4 w-full">
+			<div className="absolute bottom-4 left-0 right-0 px-4">
 				<ChatInput
 					onSend={handlePromptSubmit}
-					chatHistory={[]}
+					onStop={handleStopExecution}
 					mode={mode}
 					setMode={handleModeChange}
 					prompt={prompt}
 					setPrompt={setPrompt}
 					hideModeSelection={true}
 					disableAgentSelection={true}
+					isExecuting={
+						isExecuting ||
+						currentExecution?.workflowStatus === "in_progress" ||
+						currentExecution?.workflowStatus === "pending"
+					}
 				/>
 			</div>
 		</div>
