@@ -89,6 +89,23 @@ export interface WorkflowExecutionResponse {
 	data?: Record<string, unknown>;
 	workflowStatus?: string;
 	currentSubnet?: string;
+	// Additional fields from the actual API response
+	userAddress?: string;
+	percentage?: number;
+	totalSubnets?: number;
+	completedSubnets?: number;
+	authUrl?: string | null;
+	authRequiredSubnet?: string | null;
+	createdAt?: string;
+	updatedAt?: string;
+	lastActivity?: string;
+	subnets?: Array<{
+		itemID: number;
+		toolName: string;
+		status: "pending" | "in_progress" | "completed" | "failed";
+		data: any;
+		prompt: string | null;
+	}>;
 }
 
 // Web3 Types
