@@ -4,7 +4,12 @@ import { subscribeWithSelector } from "zustand/middleware";
 export interface SubnetStatus {
 	itemID: number;
 	toolName: string;
-	status: "pending" | "in_progress" | "completed" | "failed";
+	status:
+		| "pending"
+		| "in_progress"
+		| "completed"
+		| "failed"
+		| "waiting_response";
 	data: any;
 	prompt: string | null;
 }
@@ -17,7 +22,8 @@ export interface WorkflowExecutionStatus {
 		| "in_progress"
 		| "completed"
 		| "failed"
-		| "stopped";
+		| "stopped"
+		| "waiting_response";
 	percentage: number;
 	totalSubnets: number;
 	completedSubnets: number;

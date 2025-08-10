@@ -2,16 +2,18 @@
 import React from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { LucideArrowUp, Square } from "lucide-react";
+import { LucideArrowUp, Square, Play } from "lucide-react";
 import { ChatInputProps } from "@/types/types";
 import { useGlobalStore } from "@/stores/global-store";
 import { useRouter } from "next/navigation";
 
 import Marketplace from "./marketplace";
+import { cn } from "@/lib/utils";
 
 export default function ChatInput({
 	onSend,
 	onStop,
+	onResume,
 	mode,
 	setMode,
 	prompt,
@@ -19,6 +21,7 @@ export default function ChatInput({
 	hideModeSelection = false,
 	disableAgentSelection = false,
 	isExecuting = false,
+	workflowStatus = "running",
 }: ChatInputProps) {
 	const { selectedAgent, setSelectedAgent } = useGlobalStore();
 	const router = useRouter();
@@ -54,12 +57,41 @@ export default function ChatInput({
 		}
 	};
 
+	const handleResume = () => {
+		if (onResume) {
+			onResume();
+		}
+	};
+
 	const isAgentMode = mode === "agent";
 	const isAgentSelected = !!selectedAgent;
 	const canType = !isAgentMode || (isAgentMode && isAgentSelected);
 	const canSubmit =
 		(isAgentMode && isAgentSelected && !!prompt.trim()) ||
 		(!isAgentMode && !!prompt.trim());
+
+	// Determine button state and appearance
+	const isWorkflowStopped = workflowStatus === "stopped";
+	const showResumeButton = isExecuting && isWorkflowStopped;
+	const showStopButton = isExecuting && !isWorkflowStopped;
+	const buttonDisabled = !canSubmit && !showStopButton && !showResumeButton;
+
+	// Get appropriate placeholder text
+	const getPlaceholderText = () => {
+		if (isExecuting && workflowStatus === "waiting_response") {
+			return "Provide feedback to continue...";
+		}
+		if (isExecuting) {
+			return "Processing...";
+		}
+		if (isAgentMode) {
+			if (isAgentSelected) {
+				return `Ask ${selectedAgent.name} anything...`;
+			}
+			return "Select an agent first...";
+		}
+		return prompt || "Type your message...";
+	};
 
 	return (
 		<form onSubmit={handleSubmit} className="flex flex-col gap-y-2 w-full">
@@ -121,35 +153,47 @@ export default function ChatInput({
 				<Input
 					className="flex-1 px-0 h-full border-none shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 text-foreground placeholder:text-muted-foreground text-base"
 					type="text"
-					placeholder={
-						isAgentMode
-							? isAgentSelected
-								? `Ask ${selectedAgent.name} anything...`
-								: "Select an agent first..."
-							: prompt || "Type your message..."
-					}
+					placeholder={getPlaceholderText()}
 					value={prompt}
 					onChange={(e) => {
 						if (canType) {
 							setPrompt(e.target.value);
 						}
 					}}
-					disabled={!canType || isExecuting}
 				/>
-				<Button
-					size="icon"
-					className="!p-0 rounded-full bg-[#CDD1D4] hover:bg-[#CDD1D4]/90 text-background disabled:opacity-50 disabled:cursor-not-allowed"
-					type={isExecuting ? "button" : "submit"}
-					aria-label={isExecuting ? "Stop execution" : "Send"}
-					disabled={isExecuting ? false : !canSubmit}
-					onClick={isExecuting ? handleStop : undefined}
-				>
-					{isExecuting ? (
-						<Square className="size-5.5" />
-					) : (
+				{showResumeButton ? (
+					<Button
+						size="icon"
+						className="!p-0 rounded-full bg-green-500 hover:bg-green-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+						type="button"
+						aria-label="Resume execution"
+						disabled={false}
+						onClick={handleResume}
+					>
+						<Play className="size-4" />
+					</Button>
+				) : showStopButton ? (
+					<Button
+						size="icon"
+						className="!p-0 rounded-full bg-red-500 hover:bg-red-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+						type="button"
+						aria-label="Stop execution"
+						disabled={false}
+						onClick={handleStop}
+					>
+						<Square className="size-4" />
+					</Button>
+				) : (
+					<Button
+						size="icon"
+						className="!p-0 rounded-full bg-[#CDD1D4] hover:bg-[#CDD1D4]/90 text-background disabled:opacity-50 disabled:cursor-not-allowed"
+						type="submit"
+						aria-label="Send"
+						disabled={!canSubmit}
+					>
 						<LucideArrowUp className="size-5.5" />
-					)}
-				</Button>
+					</Button>
+				)}
 			</div>
 		</form>
 	);

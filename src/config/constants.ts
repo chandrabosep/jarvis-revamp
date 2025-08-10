@@ -24,6 +24,9 @@ export const WORKFLOW_ENDPOINTS = {
 	// Full workflow execution
 	FULL_WORKFLOW: `${process.env.NEXT_PUBLIC_NFT_USER_AGENT_URL}/natural-request`,
 	FULL_WORKFLOW_STATUS: `${process.env.NEXT_PUBLIC_REDIS_USER_AGENT_URL}/api/workflows`,
+	// Emergency stop and resume endpoints
+	EMERGENCY_STOP: `${process.env.NEXT_PUBLIC_NFT_USER_AGENT_URL}/api/emergency-stop`,
+	RESUME_WORKFLOW: `${process.env.NEXT_PUBLIC_NFT_USER_AGENT_URL}/api/resume-workflow`,
 } as const;
 
 // API Key Generation
@@ -52,8 +55,7 @@ export const NETWORK_CONFIG = {
 // App Configuration
 export const APP_CONFIG = {
 	NAME: "Jarvis AI",
-	DESCRIPTION:
-		"Jarvis AI - The Everything AI",
+	DESCRIPTION: "Jarvis AI - The Everything AI",
 	VERSION: "2.0.0",
 	SUPPORTED_NETWORKS: ["SKYNET"],
 } as const;

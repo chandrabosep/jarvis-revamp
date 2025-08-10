@@ -11,12 +11,153 @@ import { Web3Context } from "@/types/wallet";
 
 export class WorkflowExecutor {
 	private static instance: WorkflowExecutor;
+	private currentWorkflowId: string | null = null;
+	private currentPollingInterval: NodeJS.Timeout | null = null;
 
 	public static getInstance(): WorkflowExecutor {
 		if (!WorkflowExecutor.instance) {
 			WorkflowExecutor.instance = new WorkflowExecutor();
 		}
 		return WorkflowExecutor.instance;
+	}
+
+	/**
+	 * Get the current workflow ID
+	 */
+	public getCurrentWorkflowId(): string | null {
+		return this.currentWorkflowId;
+	}
+
+	/**
+	 * Emergency stop the current workflow
+	 */
+	public async emergencyStop(
+		skyBrowser: SkyMainBrowser,
+		web3Context: Web3Context,
+		reason: string = "User requested emergency stop"
+	): Promise<boolean> {
+		if (!this.currentWorkflowId) {
+			console.warn("No active workflow to stop");
+			return false;
+		}
+
+		try {
+			// Get API key
+			const apiKey = await apiKeyManager.getApiKey(
+				skyBrowser,
+				web3Context
+			);
+
+			const headers = {
+				"Content-Type": "application/json",
+				"x-api-key": apiKey,
+			};
+
+			const emergencyStopPayload = {
+				workflowId: this.currentWorkflowId,
+				emergencyStop: true,
+				reason: reason,
+			};
+
+			console.log(
+				"🚨 Emergency stopping workflow:",
+				this.currentWorkflowId
+			);
+
+			// Call emergency stop API
+			await axios.post(
+				WORKFLOW_ENDPOINTS.EMERGENCY_STOP,
+				emergencyStopPayload,
+				{ headers }
+			);
+
+			// Stop polling
+			this.stopPolling();
+
+			console.log("✅ Workflow emergency stopped successfully");
+			return true;
+		} catch (error) {
+			console.error("❌ Failed to emergency stop workflow:", error);
+			return false;
+		}
+	}
+
+	/**
+	 * Resume the current workflow
+	 */
+	public async resumeWorkflow(
+		skyBrowser: SkyMainBrowser,
+		web3Context: Web3Context
+	): Promise<boolean> {
+		if (!this.currentWorkflowId) {
+			console.warn("No workflow to resume");
+			return false;
+		}
+
+		try {
+			// Get API key
+			const apiKey = await apiKeyManager.getApiKey(
+				skyBrowser,
+				web3Context
+			);
+
+			const headers = {
+				"Content-Type": "application/json",
+				"x-api-key": apiKey,
+			};
+
+			const resumePayload = {
+				workflowId: this.currentWorkflowId,
+				resume: true,
+			};
+
+			console.log("▶️ Resuming workflow:", this.currentWorkflowId);
+
+			// Call resume API
+			await axios.post(
+				WORKFLOW_ENDPOINTS.RESUME_WORKFLOW,
+				resumePayload,
+				{ headers }
+			);
+
+			// Restart polling to monitor the resumed workflow
+			this.startPolling(this.currentWorkflowId, apiKey);
+
+			console.log("✅ Workflow resumed successfully");
+			return true;
+		} catch (error) {
+			console.error("❌ Failed to resume workflow:", error);
+			return false;
+		}
+	}
+
+	/**
+	 * Stop the current polling
+	 */
+	private stopPolling(): void {
+		if (this.currentPollingInterval) {
+			clearInterval(this.currentPollingInterval);
+			this.currentPollingInterval = null;
+		}
+	}
+
+	/**
+	 * Clear the current workflow ID
+	 */
+	public clearCurrentWorkflow(): void {
+		this.currentWorkflowId = null;
+		this.stopPolling();
+	}
+
+	/**
+	 * Handle external workflow status changes (e.g., workflow stopped externally)
+	 */
+	public handleExternalStatusChange(workflowStatus: string): void {
+		if (workflowStatus === "stopped" && this.currentWorkflowId) {
+			console.log("🛑 Workflow stopped externally, clearing local state");
+			this.stopPolling();
+			// Note: We don't clear currentWorkflowId here as the user might want to resume
+		}
 	}
 
 	/**
@@ -229,7 +370,13 @@ export class WorkflowExecutor {
 		apiKey: string,
 		onStatusUpdate?: (data: WorkflowExecutionResponse) => void
 	): void {
-		const pollingInterval = setInterval(async () => {
+		// Store the current workflow ID
+		this.currentWorkflowId = requestId;
+
+		// Stop any existing polling
+		this.stopPolling();
+
+		this.currentPollingInterval = setInterval(async () => {
 			try {
 				const statusEndpoint = `${WORKFLOW_ENDPOINTS.FULL_WORKFLOW_STATUS}/${requestId}`;
 
@@ -247,17 +394,26 @@ export class WorkflowExecutor {
 					onStatusUpdate(statusData);
 				}
 
-				// Clear interval when workflow is completed or failed
+				// Log status changes for debugging
+				console.log(
+					`📊 Workflow ${requestId} status:`,
+					statusData.workflowStatus
+				);
+
+				// Clear interval when workflow is completed, failed, or stopped
 				const isCompleted =
 					statusData.workflowStatus === "completed" ||
-					statusData.workflowStatus === "failed";
+					statusData.workflowStatus === "failed" ||
+					statusData.workflowStatus === "stopped";
 
 				if (isCompleted) {
-					clearInterval(pollingInterval);
+					this.stopPolling();
+					this.currentWorkflowId = null;
 				}
 			} catch (error) {
 				console.error("Polling error:", error);
-				clearInterval(pollingInterval);
+				this.stopPolling();
+				this.currentWorkflowId = null;
 			}
 		}, 2000); // Poll every 2 seconds
 	}

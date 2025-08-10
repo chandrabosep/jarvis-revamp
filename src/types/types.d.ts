@@ -1,6 +1,7 @@
 export interface ChatInputProps {
 	onSend: (message: string, selectedAgentId?: string) => void;
 	onStop?: () => void;
+	onResume?: () => void;
 	mode: "chat" | "agent";
 	setMode: (value: "chat" | "agent") => void;
 	prompt: string;
@@ -8,4 +9,10 @@ export interface ChatInputProps {
 	hideModeSelection?: boolean;
 	disableAgentSelection?: boolean;
 	isExecuting?: boolean;
+	workflowStatus?:
+		| "running"
+		| "stopped"
+		| "completed"
+		| "failed"
+		| "waiting_response";
 }

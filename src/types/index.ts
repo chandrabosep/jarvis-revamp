@@ -102,7 +102,12 @@ export interface WorkflowExecutionResponse {
 	subnets?: Array<{
 		itemID: number;
 		toolName: string;
-		status: "pending" | "in_progress" | "completed" | "failed";
+		status:
+			| "pending"
+			| "in_progress"
+			| "completed"
+			| "failed"
+			| "waiting_response";
 		data: any;
 		prompt: string | null;
 	}>;
