@@ -62,9 +62,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 							<SidebarMenuItem>
 								<Link href="/create">
 									<Image
-										src="logo.svg"
+										src="/logo.png"
 										alt="logo"
-										className="size-9"
+										className="w-9"
 										width={500}
 										height={500}
 									/>

@@ -5,4 +5,6 @@ export interface ChatInputProps {
 	setMode: (value: "chat" | "agent") => void;
 	prompt: string;
 	setPrompt: (value: string) => void;
+	hideModeSelection?: boolean;
+	disableAgentSelection?: boolean;
 }

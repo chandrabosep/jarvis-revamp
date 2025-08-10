@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import { persist } from "zustand/middleware";
-import { Agent } from "@/types";
+import { Agent, AgentDetail } from "@/types";
 
 // Global Store State
 interface GlobalStore {
@@ -12,7 +12,7 @@ interface GlobalStore {
 	// Mode and Agent Management
 	mode: "chat" | "agent";
 	prompt: string;
-	selectedAgent: Agent | null;
+	selectedAgent: Agent | AgentDetail | null;
 
 	// Auto Mode
 	autoMode: boolean;
@@ -23,7 +23,7 @@ interface GlobalStore {
 
 	setMode: (mode: "chat" | "agent") => void;
 	setPrompt: (prompt: string) => void;
-	setSelectedAgent: (agent: Agent | null) => void;
+	setSelectedAgent: (agent: Agent | AgentDetail | null) => void;
 
 	reset: () => void;
 }
@@ -65,7 +65,6 @@ export const useGlobalStore = create<GlobalStore>()(
 					userAddress: state.userAddress,
 					accountNFTId: state.accountNFTId,
 					prompt: state.prompt,
-					selectedAgent: state.selectedAgent,
 				}),
 			}
 		)

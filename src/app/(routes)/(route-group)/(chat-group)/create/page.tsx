@@ -78,7 +78,7 @@ export default function CreatePage() {
 					/>
 				</div>
 			</div>
-			<div className=" w-fit min-w-4xl">
+			<div className="w-fit min-w-4xl">
 				<ChatInput
 					onSend={handlePromptSubmit}
 					chatHistory={[]}

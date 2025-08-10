@@ -3,6 +3,10 @@ export interface Agent {
 	id: string;
 	name: string;
 	description: string;
+	agent_address: string;
+	is_deployed: boolean;
+	created_at: string;
+	updated_at: string;
 }
 
 export interface SubnetItem {
