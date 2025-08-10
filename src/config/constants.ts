@@ -25,8 +25,8 @@ export const WORKFLOW_ENDPOINTS = {
 	FULL_WORKFLOW: `${process.env.NEXT_PUBLIC_NFT_USER_AGENT_URL}/natural-request`,
 	FULL_WORKFLOW_STATUS: `${process.env.NEXT_PUBLIC_REDIS_USER_AGENT_URL}/api/workflows`,
 	// Emergency stop and resume endpoints
-	EMERGENCY_STOP: `${process.env.NEXT_PUBLIC_NFT_USER_AGENT_URL}/api/emergency-stop`,
-	RESUME_WORKFLOW: `${process.env.NEXT_PUBLIC_NFT_USER_AGENT_URL}/api/resume-workflow`,
+	EMERGENCY_STOP: `${process.env.NEXT_PUBLIC_NFT_USER_AGENT_URL}/natural-request`,
+	RESUME_WORKFLOW: `${process.env.NEXT_PUBLIC_NFT_USER_AGENT_URL}/natural-request`,
 } as const;
 
 // API Key Generation

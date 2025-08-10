@@ -72,6 +72,7 @@ export default function AgentChatPage() {
 	const [currentWorkflowId, setCurrentWorkflowId] = useState<string | null>(
 		null
 	);
+
 	const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
 	const [isInFeedbackMode, setIsInFeedbackMode] = useState(false);
 	const { skyBrowser, address } = useWallet();
@@ -163,6 +164,544 @@ export default function AgentChatPage() {
 
 			const onStatusUpdate = (data: any) => {
 				console.log("📊 Workflow status update:", data);
+				console.log("🔄 Current workflow status:", data.workflowStatus);
+				console.log(
+					"🔍 Workflow executor polling status:",
+					workflowExecutor.isPolling()
+				);
+				console.log(
+					"🔍 Current workflow ID in component:",
+					currentWorkflowId
+				);
+
+				// Store current workflow data for progress display
+				setCurrentWorkflowData(data);
+
+				// Store workflow ID if available
+				if (data?.requestId && !currentWorkflowId) {
+					setCurrentWorkflowId(data.requestId);
+				}
+
+				if (
+					data &&
+					Array.isArray(data.subnets) &&
+					data.subnets.length > 0
+				) {
+					// Check if all subnets are pending
+					const allPending = data.subnets.every(
+						(subnet: any) => subnet.status === "pending"
+					);
+
+					// Update chat messages using functional state update to avoid stale closures
+					setChatMessages((prevMessages) => {
+						const updatedMessages = [...prevMessages];
+
+						// If all subnets are pending, only show the first one
+						if (allPending) {
+							const firstSubnet = data.subnets[0];
+							const existingMessageIndex =
+								updatedMessages.findIndex(
+									(msg) =>
+										msg.type === "workflow_subnet" &&
+										msg.subnetIndex === 0
+								);
+
+							const subnetContent = `Waiting to start...`;
+
+							if (existingMessageIndex >= 0) {
+								// Update existing message
+								updatedMessages[existingMessageIndex] = {
+									...updatedMessages[existingMessageIndex],
+									subnetStatus: firstSubnet.status,
+									content: subnetContent,
+								};
+							} else {
+								// Create new message for the first subnet only
+								const newMessage: ChatMsg = {
+									id: `subnet_0_${Date.now()}`,
+									type: "pending",
+									content: "Waiting to start...",
+									timestamp: new Date(),
+									subnetStatus: firstSubnet.status,
+									toolName: firstSubnet.toolName,
+									subnetIndex: 0,
+								};
+
+								updatedMessages.push(newMessage);
+							}
+
+							// Remove any other subnet messages if they exist
+							return updatedMessages.filter(
+								(msg) =>
+									msg.type !== "workflow_subnet" ||
+									msg.subnetIndex === 0
+							);
+						} else {
+							// Handle normal subnet updates (not all pending)
+							data.subnets.forEach(
+								(subnet: any, index: number) => {
+									const existingMessageIndex =
+										updatedMessages.findIndex(
+											(msg) =>
+												msg.type ===
+													"workflow_subnet" &&
+												msg.subnetIndex === index
+										);
+
+									// Check if workflow is waiting for response
+									const isWaitingResponse =
+										data.workflowStatus ===
+										"waiting_response";
+
+									let subnetContent: string;
+									if (
+										isWaitingResponse &&
+										subnet.status === "waiting_response"
+									) {
+										// When waiting for response, show just the result (question will be shown separately)
+										const result = parseAgentResponse(
+											subnet.data
+										);
+										if (result) {
+											subnetContent = result;
+										} else {
+											subnetContent =
+												"Processing completed";
+										}
+									} else if (
+										subnet.status === "done" &&
+										subnet.data
+									) {
+										subnetContent =
+											parseAgentResponse(subnet.data) ||
+											"Processing completed";
+									} else if (
+										subnet.status === "in_progress"
+									) {
+										subnetContent = "Processing...";
+									} else if (subnet.status === "pending") {
+										subnetContent = "Waiting to start...";
+									} else if (subnet.status === "failed") {
+										subnetContent = "Failed to process";
+									} else {
+										// For any other status, show a neutral message instead of "Failed to process"
+										subnetContent = "Processing...";
+									}
+
+									if (existingMessageIndex >= 0) {
+										// Update existing message
+										updatedMessages[existingMessageIndex] =
+											{
+												...updatedMessages[
+													existingMessageIndex
+												],
+												subnetStatus: subnet.status,
+												content: subnetContent,
+											};
+									} else {
+										// Create new message for this subnet
+										const newMessage: ChatMsg = {
+											id: `subnet_${index}_${Date.now()}`,
+											type: "workflow_subnet",
+											content: subnetContent,
+											timestamp: new Date(),
+											subnetStatus: subnet.status,
+											toolName: subnet.toolName,
+											subnetIndex: index,
+										};
+
+										updatedMessages.push(newMessage);
+									}
+								}
+							);
+
+							// Only add ONE question message when waiting for response, not one per subnet
+							if (data.workflowStatus === "waiting_response") {
+								// Find the first subnet that has a question
+								const subnetWithQuestion = data.subnets.find(
+									(subnet: any) =>
+										subnet.status === "waiting_response" &&
+										subnet.question
+								);
+
+								if (subnetWithQuestion) {
+									// Check if we already have a question message
+									const existingQuestionIndex =
+										updatedMessages.findIndex(
+											(msg) => msg.type === "question"
+										);
+
+									console.log(
+										"🔍 Checking for existing question message:",
+										{
+											existingQuestionIndex,
+											subnetWithQuestion:
+												subnetWithQuestion.toolName,
+											question:
+												subnetWithQuestion.question
+													.text,
+										}
+									);
+
+									if (existingQuestionIndex === -1) {
+										// Add only one question message
+										const questionMessage: ChatMsg = {
+											id: `question_${Date.now()}`,
+											type: "question",
+											content:
+												subnetWithQuestion.question
+													.text,
+											timestamp: new Date(),
+											toolName:
+												subnetWithQuestion.toolName,
+										};
+
+										console.log(
+											"✅ Adding new question message:",
+											questionMessage
+										);
+										updatedMessages.push(questionMessage);
+									} else {
+										console.log(
+											"⏭️ Skipping duplicate question message"
+										);
+									}
+								} else {
+									console.log(
+										"⚠️ No subnet with question found"
+									);
+								}
+							}
+
+							// Remove any old pending messages that are no longer relevant
+							return updatedMessages.filter(
+								(msg) =>
+									msg.type !== "workflow_subnet" ||
+									data.subnets.some(
+										(subnet: any, index: number) =>
+											index === msg.subnetIndex
+									)
+							);
+						}
+					});
+
+					// Check if workflow is completed, failed, stopped, or waiting for response
+					if (data.workflowStatus === "completed") {
+						setIsExecuting(false);
+						setPollingStatus(false);
+						setWorkflowStatus("completed");
+						setIsInFeedbackMode(false);
+
+						// Add completion message
+						const completionMessage: ChatMsg = {
+							id: `completion_${Date.now()}`,
+							type: "response",
+							content: "Workflow executed",
+							timestamp: new Date(),
+						};
+						setChatMessages((prev) => [...prev, completionMessage]);
+					} else if (data.workflowStatus === "failed") {
+						setIsExecuting(false);
+						setPollingStatus(false);
+						setWorkflowStatus("failed");
+						setIsInFeedbackMode(false);
+					} else if (data.workflowStatus === "stopped") {
+						// Workflow has been stopped (either by user or system)
+						setIsExecuting(false);
+						setPollingStatus(false);
+						setWorkflowStatus("stopped");
+						setIsInFeedbackMode(false);
+						console.log("🛑 Workflow status updated to stopped");
+
+						// Preserve the workflow ID for resume operations
+						if (data.requestId && !currentWorkflowId) {
+							setCurrentWorkflowId(data.requestId);
+						}
+
+						// Notify workflow executor about external status change
+						workflowExecutor.handleExternalStatusChange("stopped");
+					} else if (data.workflowStatus === "waiting_response") {
+						// Keep executing state true when waiting for response to show feedback UI
+						setIsExecuting(true);
+						setPollingStatus(true);
+						setWorkflowStatus("waiting_response");
+						setIsInFeedbackMode(true);
+						console.log(
+							"💬 Workflow waiting for user feedback - Feedback mode enabled"
+						);
+					}
+				}
+			};
+
+			const workflowId = await workflowExecutor.executeAgentWorkflow(
+				selectedAgent as any,
+				message,
+				address,
+				skyBrowser,
+				{ address },
+				onStatusUpdate
+			);
+
+			// Store the workflow ID for resume/stop operations
+			setCurrentWorkflowId(workflowId);
+
+			setPrompt("");
+		} catch (error) {
+			console.error("Error executing workflow:", error);
+			setIsExecuting(false);
+			setPollingStatus(false);
+			setWorkflowStatus("failed");
+		}
+	};
+
+	// Handle feedback response submission
+	const handleFeedbackResponse = async (feedback: string) => {
+		console.log("💬 Handling feedback response:", feedback);
+		console.log("🔍 Current polling status:", workflowExecutor.isPolling());
+		console.log("🔍 Current workflow ID:", currentWorkflowId);
+
+		if (!currentWorkflowId || !skyBrowser || !address) {
+			console.error("Missing required data for feedback submission");
+			return;
+		}
+
+		try {
+			// Set loading state
+			setIsSubmittingFeedback(true);
+
+			// Add the feedback as a feedback answer message (not a user prompt)
+			const feedbackMessage: ChatMsg = {
+				id: `feedback_${Date.now()}`,
+				type: "answer",
+				content: feedback,
+				timestamp: new Date(),
+			};
+
+			console.log("📝 Adding feedback message to chat:", feedbackMessage);
+			setChatMessages((prev) => [...prev, feedbackMessage]);
+
+			// Submit feedback to the workflow via the NFT_USER_AGENT_URL endpoint
+			const nftUserAgentUrl = process.env.NEXT_PUBLIC_NFT_USER_AGENT_URL;
+			if (!nftUserAgentUrl) {
+				console.error(
+					"❌ NEXT_PUBLIC_NFT_USER_AGENT_URL environment variable is not configured"
+				);
+				// Add error message to chat
+				const errorMessage: ChatMsg = {
+					id: `error_${Date.now()}`,
+					type: "response",
+					content:
+						"Error: Feedback submission endpoint not configured",
+					timestamp: new Date(),
+				};
+				setChatMessages((prev) => [...prev, errorMessage]);
+				return;
+			}
+
+			// Get API key for authentication
+			const apiKey = await apiKeyManager.getApiKey(skyBrowser, {
+				address,
+			});
+			if (!apiKey) {
+				console.error(
+					"❌ Failed to get API key for feedback submission"
+				);
+				const errorMessage: ChatMsg = {
+					id: `error_${Date.now()}`,
+					type: "response",
+					content:
+						"Error: Failed to authenticate feedback submission",
+					timestamp: new Date(),
+				};
+				setChatMessages((prev) => [...prev, errorMessage]);
+				return;
+			}
+
+			// Extract the question that needs to be answered
+			const subnetWithQuestion = currentWorkflowData?.subnets?.find(
+				(subnet: any) =>
+					subnet.status === "waiting_response" && subnet.question
+			);
+
+			console.log("🔍 Found subnet with question:", {
+				subnet: subnetWithQuestion?.toolName,
+				status: subnetWithQuestion?.status,
+				question: subnetWithQuestion?.question?.text,
+			});
+
+			if (!subnetWithQuestion?.question?.text) {
+				console.error(
+					"❌ No question found in workflow data for feedback"
+				);
+				const errorMessage: ChatMsg = {
+					id: `error_${Date.now()}`,
+					type: "response",
+					content: "Error: No question found to answer",
+					timestamp: new Date(),
+				};
+				setChatMessages((prev) => [...prev, errorMessage]);
+				return;
+			}
+
+			const contextPayload = {
+				workflowId: currentWorkflowId,
+				answer: feedback,
+				question: subnetWithQuestion.question.text,
+			};
+
+			console.log("🚀 Submitting feedback to workflow:", contextPayload);
+			console.log("❓ Answering question:", contextPayload.question);
+
+			// Add a "submitting feedback" message to show progress
+			const submittingMessage: ChatMsg = {
+				id: `submitting_${Date.now()}`,
+				type: "response",
+				content: "Submitting feedback...",
+				timestamp: new Date(),
+			};
+			setChatMessages((prev) => [...prev, submittingMessage]);
+
+			// Make the API call to submit feedback with API key header
+			const response = await fetch(`${nftUserAgentUrl}/natural-request`, {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					"x-api-key": apiKey,
+				},
+				body: JSON.stringify(contextPayload),
+			});
+
+			if (!response.ok) {
+				throw new Error(
+					`Failed to submit feedback: ${response.status} ${response.statusText}`
+				);
+			}
+
+			const result = await response.json();
+			console.log("✅ Feedback submitted successfully:", result);
+
+			// Remove the "submitting feedback" message and add success message
+			setChatMessages((prev) =>
+				prev.filter((msg) => msg.id !== submittingMessage.id)
+			);
+
+			const successMessage: ChatMsg = {
+				id: `success_${Date.now()}`,
+				type: "response",
+				content: "Feedback submitted successfully",
+				timestamp: new Date(),
+			};
+			setChatMessages((prev) => [...prev, successMessage]);
+
+			// Clear the prompt after successful submission
+			setPrompt("");
+
+			// Update workflow status to indicate feedback was submitted
+			// The workflow should continue processing after feedback is submitted
+			setWorkflowStatus("running");
+			setIsExecuting(true);
+			setIsInFeedbackMode(false);
+			console.log("✅ Feedback mode cleared, workflow continuing...");
+
+			// Update the current workflow data to reflect the new status
+			if (currentWorkflowData) {
+				setCurrentWorkflowData({
+					...currentWorkflowData,
+					workflowStatus: "running",
+				});
+			}
+
+			// Remove the continuation message - just show success and let the workflow continue silently
+
+			// Verify that the workflow executor is still polling for this workflow
+			if (workflowExecutor.getCurrentWorkflowId() === currentWorkflowId) {
+				console.log(
+					"✅ Workflow executor is still active and polling for workflow:",
+					currentWorkflowId
+				);
+			} else {
+				console.warn(
+					"⚠️ Workflow executor is not polling for the current workflow. This might indicate an issue."
+				);
+			}
+
+			// Log the current state for debugging
+			console.log("🔄 Workflow state after feedback submission:", {
+				workflowId: currentWorkflowId,
+				workflowStatus: "running",
+				isExecuting: true,
+				isSubmittingFeedback: false,
+			});
+		} catch (error) {
+			console.error("Error submitting feedback:", error);
+
+			// Remove the "submitting feedback" message if it exists
+			setChatMessages((prev) =>
+				prev.filter((msg) => msg.content !== "Submitting feedback...")
+			);
+
+			// Add error message to chat
+			const errorMessage: ChatMsg = {
+				id: `error_${Date.now()}`,
+				type: "response",
+				content: `Error submitting feedback: ${
+					error instanceof Error ? error.message : "Unknown error"
+				}`,
+				timestamp: new Date(),
+			};
+			setChatMessages((prev) => [...prev, errorMessage]);
+		} finally {
+			// Always clear loading state
+			setIsSubmittingFeedback(false);
+		}
+	};
+
+	const handleStopExecution = async () => {
+		if (!skyBrowser || !address || !currentWorkflowId) {
+			console.warn("Cannot stop execution: missing required data");
+			return;
+		}
+
+		try {
+			console.log("🚨 Emergency stopping workflow:", currentWorkflowId);
+
+			// Call emergency stop API
+			const success = await workflowExecutor.emergencyStop(
+				skyBrowser,
+				{ address },
+				"User requested emergency stop",
+				currentWorkflowId
+			);
+
+			if (success) {
+				setIsExecuting(false);
+				setPollingStatus(false);
+				setWorkflowStatus("stopped");
+				console.log("✅ Workflow emergency stopped successfully");
+			} else {
+				console.error("❌ Failed to emergency stop workflow");
+			}
+		} catch (error) {
+			console.error("Error during emergency stop:", error);
+			// Fallback: just stop locally
+			setIsExecuting(false);
+			setPollingStatus(false);
+			setWorkflowStatus("stopped");
+		}
+	};
+
+	const handleResumeExecution = async () => {
+		if (!skyBrowser || !address || !currentWorkflowId) {
+			console.warn("Cannot resume execution: missing required data");
+			return;
+		}
+
+		try {
+			console.log("▶️ Resuming workflow:", currentWorkflowId);
+
+			// Create a new status callback with access to current state
+			const newStatusCallback = (data: any) => {
+				console.log("📊 Workflow status update (resumed):", data);
 				console.log("🔄 Current workflow status:", data.workflowStatus);
 
 				// Store current workflow data for progress display
@@ -404,6 +943,11 @@ export default function AgentChatPage() {
 						setIsInFeedbackMode(false);
 						console.log("🛑 Workflow status updated to stopped");
 
+						// Preserve the workflow ID for resume operations
+						if (data.requestId && !currentWorkflowId) {
+							setCurrentWorkflowId(data.requestId);
+						}
+
 						// Notify workflow executor about external status change
 						workflowExecutor.handleExternalStatusChange("stopped");
 					} else if (data.workflowStatus === "waiting_response") {
@@ -419,270 +963,17 @@ export default function AgentChatPage() {
 				}
 			};
 
-			await workflowExecutor.executeAgentWorkflow(
-				selectedAgent as any,
-				message,
-				address,
-				skyBrowser,
-				{ address },
-				onStatusUpdate
-			);
-
-			setPrompt("");
-		} catch (error) {
-			console.error("Error executing workflow:", error);
-			setIsExecuting(false);
-			setPollingStatus(false);
-			setWorkflowStatus("failed");
-		}
-	};
-
-	// Handle feedback response submission
-	const handleFeedbackResponse = async (feedback: string) => {
-		console.log("💬 Handling feedback response:", feedback);
-
-		if (!currentWorkflowId || !skyBrowser || !address) {
-			console.error("Missing required data for feedback submission");
-			return;
-		}
-
-		try {
-			// Set loading state
-			setIsSubmittingFeedback(true);
-
-			// Add the feedback as a feedback answer message (not a user prompt)
-			const feedbackMessage: ChatMsg = {
-				id: `feedback_${Date.now()}`,
-				type: "answer",
-				content: feedback,
-				timestamp: new Date(),
-			};
-
-			console.log("📝 Adding feedback message to chat:", feedbackMessage);
-			setChatMessages((prev) => [...prev, feedbackMessage]);
-
-			// Submit feedback to the workflow via the NFT_USER_AGENT_URL endpoint
-			const nftUserAgentUrl = process.env.NEXT_PUBLIC_NFT_USER_AGENT_URL;
-			if (!nftUserAgentUrl) {
-				console.error(
-					"❌ NEXT_PUBLIC_NFT_USER_AGENT_URL environment variable is not configured"
-				);
-				// Add error message to chat
-				const errorMessage: ChatMsg = {
-					id: `error_${Date.now()}`,
-					type: "response",
-					content:
-						"Error: Feedback submission endpoint not configured",
-					timestamp: new Date(),
-				};
-				setChatMessages((prev) => [...prev, errorMessage]);
-				return;
-			}
-
-			// Get API key for authentication
-			const apiKey = await apiKeyManager.getApiKey(skyBrowser, {
-				address,
-			});
-			if (!apiKey) {
-				console.error(
-					"❌ Failed to get API key for feedback submission"
-				);
-				const errorMessage: ChatMsg = {
-					id: `error_${Date.now()}`,
-					type: "response",
-					content:
-						"Error: Failed to authenticate feedback submission",
-					timestamp: new Date(),
-				};
-				setChatMessages((prev) => [...prev, errorMessage]);
-				return;
-			}
-
-			// Extract the question that needs to be answered
-			const subnetWithQuestion = currentWorkflowData?.subnets?.find(
-				(subnet: any) =>
-					subnet.status === "waiting_response" && subnet.question
-			);
-
-			console.log("🔍 Found subnet with question:", {
-				subnet: subnetWithQuestion?.toolName,
-				status: subnetWithQuestion?.status,
-				question: subnetWithQuestion?.question?.text,
-			});
-
-			if (!subnetWithQuestion?.question?.text) {
-				console.error(
-					"❌ No question found in workflow data for feedback"
-				);
-				const errorMessage: ChatMsg = {
-					id: `error_${Date.now()}`,
-					type: "response",
-					content: "Error: No question found to answer",
-					timestamp: new Date(),
-				};
-				setChatMessages((prev) => [...prev, errorMessage]);
-				return;
-			}
-
-			const contextPayload = {
-				workflowId: currentWorkflowId,
-				answer: feedback,
-				question: subnetWithQuestion.question.text,
-			};
-
-			console.log("🚀 Submitting feedback to workflow:", contextPayload);
-			console.log("❓ Answering question:", contextPayload.question);
-
-			// Add a "submitting feedback" message to show progress
-			const submittingMessage: ChatMsg = {
-				id: `submitting_${Date.now()}`,
-				type: "response",
-				content: "Submitting feedback...",
-				timestamp: new Date(),
-			};
-			setChatMessages((prev) => [...prev, submittingMessage]);
-
-			// Make the API call to submit feedback with API key header
-			const response = await fetch(`${nftUserAgentUrl}/natural-request`, {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					"x-api-key": apiKey,
-				},
-				body: JSON.stringify(contextPayload),
-			});
-
-			if (!response.ok) {
-				throw new Error(
-					`Failed to submit feedback: ${response.status} ${response.statusText}`
-				);
-			}
-
-			const result = await response.json();
-			console.log("✅ Feedback submitted successfully:", result);
-
-			// Remove the "submitting feedback" message and add success message
-			setChatMessages((prev) =>
-				prev.filter((msg) => msg.id !== submittingMessage.id)
-			);
-
-			const successMessage: ChatMsg = {
-				id: `success_${Date.now()}`,
-				type: "response",
-				content: "Feedback submitted successfully",
-				timestamp: new Date(),
-			};
-			setChatMessages((prev) => [...prev, successMessage]);
-
-			// Clear the prompt after successful submission
-			setPrompt("");
-
-			// Update workflow status to indicate feedback was submitted
-			// The workflow should continue processing after feedback is submitted
-			setWorkflowStatus("running");
-			setIsExecuting(true);
-			setIsInFeedbackMode(false);
-			console.log("✅ Feedback mode cleared, workflow continuing...");
-
-			// Update the current workflow data to reflect the new status
-			if (currentWorkflowData) {
-				setCurrentWorkflowData({
-					...currentWorkflowData,
-					workflowStatus: "running",
-				});
-			}
-
-			// Remove the continuation message - just show success and let the workflow continue silently
-
-			// Verify that the workflow executor is still polling for this workflow
-			if (workflowExecutor.getCurrentWorkflowId() === currentWorkflowId) {
-				console.log(
-					"✅ Workflow executor is still active and polling for workflow:",
-					currentWorkflowId
-				);
-			} else {
-				console.warn(
-					"⚠️ Workflow executor is not polling for the current workflow. This might indicate an issue."
-				);
-			}
-
-			// Log the current state for debugging
-			console.log("🔄 Workflow state after feedback submission:", {
-				workflowId: currentWorkflowId,
-				workflowStatus: "running",
-				isExecuting: true,
-				isSubmittingFeedback: false,
-			});
-		} catch (error) {
-			console.error("Error submitting feedback:", error);
-
-			// Remove the "submitting feedback" message if it exists
-			setChatMessages((prev) =>
-				prev.filter((msg) => msg.content !== "Submitting feedback...")
-			);
-
-			// Add error message to chat
-			const errorMessage: ChatMsg = {
-				id: `error_${Date.now()}`,
-				type: "response",
-				content: `Error submitting feedback: ${
-					error instanceof Error ? error.message : "Unknown error"
-				}`,
-				timestamp: new Date(),
-			};
-			setChatMessages((prev) => [...prev, errorMessage]);
-		} finally {
-			// Always clear loading state
-			setIsSubmittingFeedback(false);
-		}
-	};
-
-	const handleStopExecution = async () => {
-		if (!skyBrowser || !address || !currentWorkflowId) {
-			console.warn("Cannot stop execution: missing required data");
-			return;
-		}
-
-		try {
-			console.log("🚨 Emergency stopping workflow:", currentWorkflowId);
-
-			// Call emergency stop API
-			const success = await workflowExecutor.emergencyStop(
-				skyBrowser,
-				{ address },
-				"User requested emergency stop"
-			);
-
-			if (success) {
-				setIsExecuting(false);
-				setPollingStatus(false);
-				setWorkflowStatus("stopped");
-				console.log("✅ Workflow emergency stopped successfully");
-			} else {
-				console.error("❌ Failed to emergency stop workflow");
-			}
-		} catch (error) {
-			console.error("Error during emergency stop:", error);
-			// Fallback: just stop locally
-			setIsExecuting(false);
-			setPollingStatus(false);
-			setWorkflowStatus("stopped");
-		}
-	};
-
-	const handleResumeExecution = async () => {
-		if (!skyBrowser || !address || !currentWorkflowId) {
-			console.warn("Cannot resume execution: missing required data");
-			return;
-		}
-
-		try {
-			console.log("▶️ Resuming workflow:", currentWorkflowId);
+			// Set the new callback in the executor
+			workflowExecutor.setCurrentStatusCallback(newStatusCallback);
 
 			// Call resume API
-			const success = await workflowExecutor.resumeWorkflow(skyBrowser, {
-				address,
-			});
+			const success = await workflowExecutor.resumeWorkflow(
+				skyBrowser,
+				{
+					address,
+				},
+				currentWorkflowId
+			);
 
 			if (success) {
 				setIsExecuting(true);
@@ -708,11 +999,12 @@ export default function AgentChatPage() {
 	// Cleanup workflow when component unmounts
 	useEffect(() => {
 		return () => {
-			if (currentWorkflowId) {
+			// Only clear if the workflow is not in a resumable state
+			if (currentWorkflowId && workflowStatus !== "stopped") {
 				workflowExecutor.clearCurrentWorkflow();
 			}
 		};
-	}, [currentWorkflowId]);
+	}, [currentWorkflowId, workflowStatus]);
 
 	useEffect(() => {
 		let isMounted = true;

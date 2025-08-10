@@ -11,6 +11,7 @@ const axiosInstance = axios.create({
 });
 
 export const getAxiosInstanceWithApiKey = async (
+	apiUrl: string,
 	skyBrowser?: SkyMainBrowser,
 	web3Context?: Web3Context
 ) => {
@@ -21,7 +22,7 @@ export const getAxiosInstanceWithApiKey = async (
 				web3Context
 			);
 			return axios.create({
-				baseURL: process.env.NEXT_PUBLIC_API_BASE_URL,
+				baseURL: apiUrl,
 				headers: {
 					"Content-Type": "application/json",
 					"x-api-key": apiKey,

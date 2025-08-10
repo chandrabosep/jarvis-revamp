@@ -18,29 +18,55 @@ import {
 	SelectValue,
 } from "../ui/select";
 import { Label } from "../ui/label";
-import * as LucideIcons from "lucide-react";
-import { MoreVerticalIcon } from "lucide-react";
+		import {
+	MoreVerticalIcon,
+	Clock,
+	Loader2,
+	RefreshCw,
+	CheckCircle,
+	XCircle,
+	TimerIcon,
+} from "lucide-react";
+import { useHistory } from "@/hooks/use-history";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipProvider,
+	TooltipTrigger,
+} from "../ui/tooltip";
+import { Skeleton } from "../ui/skeleton";
+import { useWallet } from "@/hooks/use-wallet";
 
 const CHAT_OPTIONS = [1, 5, 10, 15, 20] as const;
 
-const NAV_ITEMS = [	
-	{ title: "Write a poem about the ocean", url: "/chat", icon: "HomeIcon" },
-	{ title: "Summarize this article", url: "/chat", icon: "HistoryIcon" },
-	{ title: "Brainstorm startup ideas", url: "/chat", icon: "PlusIcon" },
-	{
-		title: "Explain quantum computing simply",
-		url: "/chat",
-		icon: "CpuIcon",
-	},
-	{ title: "Translate to French", url: "/chat", icon: "LanguagesIcon" },
-] as const;
+// Map workflow status to icon
+const getWorkflowIcon = (status: string) => {
+	switch (status) {
+		case "completed":
+			return CheckCircle;
+		case "waiting_response":
+			return TimerIcon;
+		case "stopped":
+			return XCircle;
+		default:
+			return Clock;
+	}
+};
 
 export default function ChatSidebar() {
 	const [chatCount, setChatCount] = useState(5);
 	const [isExpanded, setIsExpanded] = useState(false);
 	const [isSelectOpen, setIsSelectOpen] = useState(false);
 	const [isMenuSelectOpen, setIsMenuSelectOpen] = useState(false);
+	const [isRefreshing, setIsRefreshing] = useState(false);
 	const sidebarRef = useRef<HTMLDivElement>(null);
+
+	// Use the history hook to fetch real data
+	const { history, loading, error, fetchHistory } = useHistory(chatCount);
+	const { address } = useWallet();
+
+	// Check if wallet is connected
+	const hasWallet = !!address;
 
 	const handleMouseEnter = useCallback(() => {
 		setIsExpanded(true);
@@ -94,7 +120,29 @@ export default function ChatSidebar() {
 		[isSelectOpen]
 	);
 
-	const visibleNavItems = NAV_ITEMS.slice(0, chatCount);
+	const handleChatCountChange = useCallback(
+		(value: string) => {
+			const newCount = Number(value);
+			setChatCount(newCount);
+			// Fetch history with new limit
+			fetchHistory(newCount);
+		},
+		[fetchHistory]
+	);
+
+	const handleRefresh = useCallback(async () => {
+		if (isRefreshing) return;
+		setIsRefreshing(true);
+		try {
+			await fetchHistory();
+		} finally {
+			setIsRefreshing(false);
+		}
+	}, [fetchHistory, isRefreshing]);
+
+	// Use real history if available, otherwise show empty state
+	const visibleItems =
+		hasWallet && history.length > 0 ? history.slice(0, chatCount) : [];
 
 	return (
 		<Sidebar
@@ -123,21 +171,23 @@ export default function ChatSidebar() {
 									isExpanded && "block"
 								}`}
 							>
-								Recents
+								{loading ? "Loading..." : "Recents"}
 							</Label>
 							<Select
 								onOpenChange={handleSelectOpenChange}
 								value={chatCount.toString()}
-								onValueChange={(value) =>
-									setChatCount(Number(value))
-								}
+								onValueChange={handleChatCountChange}
 							>
 								<SelectTrigger
 									className={`!w-fit !h-7 px-[3.5px] py-0 !gap-x-1 bg-background border-0 text-sm rounded-md ${
 										isExpanded ? "px-[6px]" : "px-[3.5px]"
 									}`}
 								>
-									<SelectValue />
+									{loading ? (
+										<Loader2 className="h-3 w-3 animate-spin" />
+									) : (
+										<SelectValue />
+									)}
 								</SelectTrigger>
 								<SelectContent>
 									{CHAT_OPTIONS.map((count) => (
@@ -150,6 +200,18 @@ export default function ChatSidebar() {
 									))}
 								</SelectContent>
 							</Select>
+							{isExpanded && (error || loading) && (
+								<button
+									onClick={handleRefresh}
+									disabled={isRefreshing}
+									className="p-1 hover:bg-accent rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+									title="Refresh history"
+								>
+									<RefreshCw
+										className={`h-3 w-3 `}
+									/>
+								</button>
+							)}
 						</SidebarMenuItem>
 					</SidebarMenu>
 				</SidebarHeader>
@@ -160,12 +222,35 @@ export default function ChatSidebar() {
 							isExpanded ? "items-start" : "items-center"
 						}`}
 					>
-						{visibleNavItems.map((item) => {
-							const LucideIcon = (LucideIcons as any)[item.icon];
-
+						{error && isExpanded && (
+							<div className="px-2 py-1 text-xs text-red-500">
+								Failed to load history: {error}
+							</div>
+						)}
+						{visibleItems.length === 0 &&
+							!loading &&
+							!error &&
+							hasWallet && <></>}
+						{!hasWallet && !loading && !error && <></>}
+						{loading && (
+							<div className="w-full flex flex-col gap-2">
+								{[...Array(3)].map((_, index) => (
+									<Skeleton
+										key={index}
+										className="h-6 w-full bg-background/50 rounded-md"
+									/>
+								))}
+							</div>
+						)}
+						{visibleItems.map((workflow, index) => {
+							const Icon = getWorkflowIcon(workflow.status);
 							return (
 								<SidebarMenuItem
-									key={item.title}
+									key={
+										workflow.requestId ||
+										workflow.id ||
+										index
+									}
 									className="w-full"
 								>
 									<SidebarMenuButton
@@ -174,17 +259,45 @@ export default function ChatSidebar() {
 									>
 										<div className="w-full font-medium hover:text-primary-foreground transition-colors duration-150 ">
 											<Link
-												href={item.url}
+												href={`/chat/agent/${workflow.agentId}?workflowId=${workflow.requestId}`}
 												className="w-full flex items-center justify-center gap-x-1.5"
 											>
-												{LucideIcon && (
-													<LucideIcon className="!size-[19px]" />
+												{Icon && (
+													<Icon
+														className={`!size-[19px]`}
+													/>
 												)}
 												{isExpanded && (
 													<div className="flex items-center !w-full flex-1 min-w-0">
-														<span className="text-sm w-[140px] text-ellipsis whitespace-nowrap overflow-hidden">
-															{item.title}
-														</span>
+														<div className="flex flex-col w-[140px] min-w-0">
+															<TooltipProvider>
+																<Tooltip>
+																	<TooltipTrigger
+																		asChild
+																	>
+																		<span className="text-sm text-ellipsis whitespace-nowrap overflow-hidden cursor-pointer">
+																			{workflow.prompt ||
+																				workflow.requestId ||
+																				`Workflow ${
+																					index +
+																					1
+																				}`}
+																		</span>
+																	</TooltipTrigger>
+																	<TooltipContent>
+																		<p className="max-w-xs">
+																			{workflow.prompt ||
+																				workflow.requestId ||
+																				`Workflow ${
+																					index +
+																					1
+																				}`}
+																		</p>
+																	</TooltipContent>
+																</Tooltip>
+															</TooltipProvider>
+															{/* Status text removed as per instruction */}
+														</div>
 														<div className="flex-1" />
 													</div>
 												)}

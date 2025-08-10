@@ -204,6 +204,56 @@ export interface TestStatus {
 	status: string;
 }
 
+// History Types
+export interface HistoryItem {
+	id: string;
+	requestId: string;
+	agentId?: string;
+	agentName?: string;
+	prompt?: string;
+	status:
+		| "in_progress"
+		| "completed"
+		| "pending"
+		| "failed"
+		| "stopped"
+		| "waiting_response";
+	createdAt: string;
+	updatedAt: string;
+	percentage?: number;
+	totalSubnets?: number;
+	completedSubnets?: number;
+	userAddress?: string;
+}
+
+export interface HistoryResponse {
+	success: boolean;
+	data: {
+		requests: HistoryItem[];
+		pagination: {
+			page: number;
+			limit: number;
+			total: number;
+			totalPages: number;
+			hasNext: boolean;
+			hasPrev: boolean;
+		};
+	};
+	message: string;
+}
+
+// New workflow response format
+export interface WorkflowResponse {
+	workflows: HistoryItem[];
+	pagination: {
+		page: number;
+		limit: number;
+		total: number;
+		totalPages: number;
+	};
+	timestamp: string;
+}
+
 export interface UIState {
 	testStatus: TestStatus;
 }

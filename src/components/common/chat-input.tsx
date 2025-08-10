@@ -72,7 +72,7 @@ export default function ChatInput({
 
 	// Determine button state and appearance
 	const isWorkflowStopped = workflowStatus === "stopped";
-	const showResumeButton = isExecuting && isWorkflowStopped;
+	const showResumeButton = isWorkflowStopped;
 	const showStopButton = isExecuting && !isWorkflowStopped;
 	const buttonDisabled = !canSubmit && !showStopButton && !showResumeButton;
 
