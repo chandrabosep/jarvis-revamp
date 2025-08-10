@@ -6,6 +6,7 @@ interface AgentCardProps {
 	name: string;
 	description: string;
 	owned?: boolean;
+	isSelected?: boolean;
 	onMint?: () => void;
 	onSelect?: () => void;
 }
@@ -14,11 +15,16 @@ export default function AgentCard({
 	name,
 	description,
 	owned = false,
+	isSelected = false,
 	onMint,
 	onSelect,
 }: AgentCardProps) {
 	return (
-		<div className="bg-muted rounded-lg p-4 flex flex-col gap-1 shadow-sm">
+		<div
+			className={`rounded-lg p-4 flex flex-col gap-1 shadow-sm transition-colors ${
+				isSelected ? "bg-accent/20 border-2 border-accent" : "bg-muted"
+			}`}
+		>
 			<div className="flex items-center gap-2 mb-1">
 				<span className="font-semibold text-base text-foreground">
 					{name}
@@ -49,9 +55,13 @@ export default function AgentCard({
 							size="sm"
 							onClick={onSelect}
 							variant={"outline"}
-							className="bg-border/70 hover:bg-border hover:text-white text-icon"
+							className={`${
+								isSelected
+									? "bg-accent text-accent-foreground border-accent hover:bg-accent/90"
+									: "bg-border/70 hover:bg-border hover:text-white text-icon"
+							}`}
 						>
-							Select
+							{isSelected ? "Selected" : "Select"}
 						</Button>
 					)}
 				</div>

@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import { persist } from "zustand/middleware";
+import { Agent } from "@/types";
 
 // Global Store State
 interface GlobalStore {
@@ -11,6 +12,7 @@ interface GlobalStore {
 	// Mode and Agent Management
 	mode: "chat" | "agent";
 	prompt: string;
+	selectedAgent: Agent | null;
 
 	// Auto Mode
 	autoMode: boolean;
@@ -21,6 +23,7 @@ interface GlobalStore {
 
 	setMode: (mode: "chat" | "agent") => void;
 	setPrompt: (prompt: string) => void;
+	setSelectedAgent: (agent: Agent | null) => void;
 
 	reset: () => void;
 }
@@ -34,6 +37,7 @@ export const useGlobalStore = create<GlobalStore>()(
 				accountNFTId: null,
 				mode: "agent",
 				prompt: "",
+				selectedAgent: null,
 				autoMode: false,
 
 				// Wallet & NFT Management Actions
@@ -43,6 +47,7 @@ export const useGlobalStore = create<GlobalStore>()(
 				// Mode Management Actions
 				setMode: (mode) => set({ mode }),
 				setPrompt: (prompt) => set({ prompt }),
+				setSelectedAgent: (agent) => set({ selectedAgent: agent }),
 
 				// Reset
 				reset: () =>
@@ -51,6 +56,7 @@ export const useGlobalStore = create<GlobalStore>()(
 						accountNFTId: null,
 						mode: "agent",
 						prompt: "",
+						selectedAgent: null,
 					}),
 			}),
 			{
@@ -59,6 +65,7 @@ export const useGlobalStore = create<GlobalStore>()(
 					userAddress: state.userAddress,
 					accountNFTId: state.accountNFTId,
 					prompt: state.prompt,
+					selectedAgent: state.selectedAgent,
 				}),
 			}
 		)

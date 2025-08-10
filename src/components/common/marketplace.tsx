@@ -15,13 +15,16 @@ import SearchBar from "./search";
 import AgentCard from "./agent-card";
 import { getAgents } from "@/controllers/agents";
 import { Agent } from "@/types";
+import { useGlobalStore } from "@/stores/global-store";
 
 export default function Marketplace() {
 	const [agents, setAgents] = useState<Agent[]>([]);
 	const [loading, setLoading] = useState(false);
 	const [search, setSearch] = useState("");
 	const [error, setError] = useState<string | null>(null);
+	const [isOpen, setIsOpen] = useState(false);
 	const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+	const { setSelectedAgent, selectedAgent } = useGlobalStore();
 
 	const fetchAgents = useCallback(async (searchValue: string = "") => {
 		setLoading(true);
@@ -68,6 +71,8 @@ export default function Marketplace() {
 
 	const handleAgentSelect = (agent: Agent) => {
 		console.log("Selected agent:", agent);
+		setSelectedAgent(agent);
+		setIsOpen(false);
 	};
 
 	const handleAgentMint = (agent: Agent) => {
@@ -76,17 +81,31 @@ export default function Marketplace() {
 
 	return (
 		<>
-			<Dialog>
+			<Dialog open={isOpen} onOpenChange={setIsOpen}>
 				<DialogTrigger asChild>
-					<Button size="sm" className="w-fit cursor-pointer">
-						<Plus />
+					<Button
+						size="sm"
+						className={`w-fit cursor-pointer max-w-32 ${
+							selectedAgent
+								? "border-[1.5px] border-accent bg-accent/20 hover:bg-accent/25 !text-accent"
+								: ""
+						} overflow-hidden text-truncate whitespace-nowrap transition-colors`}
+						title={selectedAgent ? selectedAgent.name : undefined}
+					>
+						{selectedAgent ? (
+							<span className="block w-full overflow-hidden text-ellipsis text-xs">
+								{selectedAgent.name}
+							</span>
+						) : (
+							<Plus />
+						)}
 					</Button>
 				</DialogTrigger>
 				<DialogContent className="!w-[92vw] !h-[90svh] !max-h-[900px] !max-w-6xl flex flex-col border-none ">
 					<DialogHeader className="absolute top-0 left-0 w-full rounded-t-lg bg-background h-16 z-10 px-10 flex justify-center">
 						<DialogTitle className="flex items-center gap-2">
 							<StoreIcon />
-							<h5 className="text-foreground ">Marketplace</h5>
+							<span className="text-foreground">Marketplace</span>
 						</DialogTitle>
 						<DialogClose className="absolute right-10">
 							<XIcon className="size-6" />
@@ -123,7 +142,10 @@ export default function Marketplace() {
 											key={agent.id}
 											name={agent.name}
 											description={agent.description}
-											owned={false}
+											owned={true}
+											isSelected={
+												selectedAgent?.id === agent.id
+											}
 											onSelect={() =>
 												handleAgentSelect(agent)
 											}

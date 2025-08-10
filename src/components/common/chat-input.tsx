@@ -1,9 +1,11 @@
 "use client";
-import React from "react";
+import React, { useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { LucideArrowUp } from "lucide-react";
 import { ChatInputProps } from "@/types/types";
+import { useGlobalStore } from "@/stores/global-store";
+import { useRouter } from "next/navigation";
 
 import Marketplace from "./marketplace";
 
@@ -15,10 +17,38 @@ export default function ChatInput({
 	prompt,
 	setPrompt,
 }: ChatInputProps) {
+	const { selectedAgent, setSelectedAgent } = useGlobalStore();
+	const router = useRouter();
+
+	// Clear selected agent when component unmounts if in agent mode
+	useEffect(() => {
+		return () => {
+			if (mode === "agent") {
+				setSelectedAgent(null);
+			}
+		};
+	}, [mode, setSelectedAgent]);
+
+	const handleSubmit = (e: React.FormEvent) => {
+		e.preventDefault();
+
+		if (!prompt.trim()) return;
+
+		if (mode === "agent") {
+			if (!selectedAgent) {
+				console.log("Please select an agent first");
+				return;
+			}
+			router.push(`/chat/agent/${selectedAgent.id}`);
+		} else {
+			router.push("/chat");
+		}
+	};
+
 	return (
-		<div className="flex flex-col gap-y-2 w-full">
+		<form onSubmit={handleSubmit} className="flex flex-col gap-y-2 w-full">
 			<div className="flex items-center gap-2 w-full">
-				<div className="flex items-center gap-2">
+				<div className="flex items-center gap-2 min-w-[110px]">
 					<button
 						className={`
 							relative h-7 rounded-full cursor-pointer transition-colors duration-200
@@ -31,10 +61,10 @@ export default function ChatInput({
 							${mode === "agent" ? "flex-row" : "flex-row-reverse"}
 							leading-none whitespace-nowrap p-0
 						`}
+						type="button"
 						onClick={() =>
 							setMode(mode === "agent" ? "chat" : "agent")
 						}
-						type="button"
 						aria-pressed={mode === "agent"}
 					>
 						<span
@@ -64,23 +94,42 @@ export default function ChatInput({
 				<Marketplace />
 			</div>
 
+		
+
+			{/* Show warning when in agent mode but no agent selected */}
+			{mode === "agent" && !selectedAgent && (
+				<div className="flex items-center gap-2 p-2 bg-yellow-500/10 rounded-md border border-yellow-500/20">
+					<span className="text-xs text-yellow-600 font-medium">
+						⚠️ Please select an agent from the marketplace to
+						continue
+					</span>
+				</div>
+			)}
+
 			<div className="w-full flex items-center bg-input rounded-lg px-4 border border-border h-13">
 				<Input
 					className="flex-1 px-0 h-full border-none shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 text-foreground placeholder:text-muted-foreground text-base"
 					type="text"
-					placeholder={prompt}
+					placeholder={
+						mode === "agent"
+							? selectedAgent
+								? `Ask ${selectedAgent.name} anything...`
+								: "Select an agent first..."
+							: prompt || "Type your message..."
+					}
 					value={prompt}
 					onChange={(e) => setPrompt(e.target.value)}
 				/>
 				<Button
 					size="icon"
-					className="!p-0 rounded-full bg-[#CDD1D4] hover:bg-[#CDD1D4]/90 text-background"
+					className="!p-0 rounded-full bg-[#CDD1D4] hover:bg-[#CDD1D4]/90 text-background disabled:opacity-50 disabled:cursor-not-allowed"
 					type="submit"
 					aria-label="Send"
+					disabled={mode === "agent" && !selectedAgent}
 				>
 					<LucideArrowUp className="size-5.5" />
 				</Button>
 			</div>
-		</div>
+		</form>
 	);
 }

@@ -8,8 +8,30 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 
 export default function CreatePage() {
-	const { mode, prompt, setMode, setPrompt } = useGlobalStore();
+	const { mode, prompt, setPrompt, setMode, selectedAgent } =
+		useGlobalStore();
 	const router = useRouter();
+
+	// Handle mode switching
+	const handleModeChange = (newMode: "chat" | "agent") => {
+		setMode(newMode);
+	};
+
+	// Handle prompt submission
+	const handlePromptSubmit = () => {
+		if (prompt.trim()) {
+			if (mode === "agent") {
+				if (selectedAgent) {
+					// Redirect to agent-specific chat route
+					router.push(`/chat/agent/${selectedAgent.id}`);
+				}
+				// If no agent selected, just stay on the page (no alert)
+			} else {
+				// Redirect to regular chat route
+				router.push("/chat");
+			}
+		}
+	};
 
 	const handleClick = (prompt: string) => {
 		setPrompt(prompt);
@@ -58,10 +80,10 @@ export default function CreatePage() {
 			</div>
 			<div className=" w-fit min-w-4xl">
 				<ChatInput
-					onSend={() => {}}
+					onSend={handlePromptSubmit}
 					chatHistory={[]}
 					mode={mode}
-					setMode={setMode}
+					setMode={handleModeChange}
 					prompt={prompt}
 					setPrompt={setPrompt}
 				/>
