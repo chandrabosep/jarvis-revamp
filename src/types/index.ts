@@ -35,6 +35,7 @@ export interface SubnetItem {
 		agentAddress: string;
 		agentID: string;
 	};
+	feedback?: boolean; // Optional feedback property for workflow execution
 }
 
 export interface AgentDetail extends Agent {
@@ -73,11 +74,12 @@ export interface WorkflowExecutionPayload {
 }
 
 export interface WorkflowItem {
-	itemId: string;
+	itemID: string;
 	agentCollection: {
 		agentAddress: string;
 		agentID: string;
 	};
+	feedback?: boolean;
 }
 
 export interface WorkflowExecutionResponse {

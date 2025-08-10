@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { workflowExecutor } from "@/utils/workflow-executor";
 import { useExecutionStatusStore, useUIStore } from "@/stores";
-import { WorkflowExecutionPayload } from "@/types";
+import { WorkflowExecutionPayload, AgentDetail } from "@/types";
 import { STATUS } from "@/config/constants";
 import SkyMainBrowser from "@decloudlabs/skynet/lib/services/SkyMainBrowser";
 import { Web3Context } from "@/types/wallet";
@@ -14,7 +14,8 @@ export function useWorkflowExecutor() {
 		async (
 			payload: WorkflowExecutionPayload,
 			skyBrowser: SkyMainBrowser,
-			web3Context: Web3Context
+			web3Context: Web3Context,
+			onStatusUpdate?: (data: any) => void
 		) => {
 			try {
 				// Set running state
@@ -54,11 +55,17 @@ export function useWorkflowExecutor() {
 								currentSubnet: statusData.currentSubnet,
 							});
 						}
+
+						// Call the custom status update callback
+						if (onStatusUpdate) {
+							onStatusUpdate(statusData);
+						}
 					}
 				);
 
 				// Store request ID
 				updateExecutionStatus({ responseId: requestId });
+				return requestId;
 			} catch (error: unknown) {
 				updateExecutionStatus({ isRunning: false });
 				updateTestStatus({ isRunning: false, status: STATUS.FAILED });
@@ -68,7 +75,77 @@ export function useWorkflowExecutor() {
 		[updateExecutionStatus, updateTestStatus]
 	);
 
-	return {
-		executeWorkflow,
-	};
+	const executeAgentWorkflow = useCallback(
+		async (
+			agentDetail: AgentDetail,
+			userPrompt: string,
+			userAddress: string,
+			skyBrowser: SkyMainBrowser,
+			web3Context: Web3Context,
+			onStatusUpdate?: (data: any) => void
+		) => {
+			try {
+				// Set running state
+				updateExecutionStatus({ isRunning: true });
+				updateTestStatus({
+					isRunning: true,
+					status: STATUS.PROCESSING,
+				});
+
+				// Execute agent workflow using the executor
+				const requestId = await workflowExecutor.executeAgentWorkflow(
+					agentDetail,
+					userPrompt,
+					userAddress,
+					skyBrowser,
+					web3Context,
+					(statusData) => {
+						// Handle status updates from polling
+						console.log(
+							"📡 Agent workflow status update:",
+							statusData
+						);
+
+						// Update stores based on status
+						if (
+							statusData.workflowStatus === "completed" ||
+							statusData.workflowStatus === "failed"
+						) {
+							updateExecutionStatus({ isRunning: false });
+							updateTestStatus({
+								isRunning: false,
+								status:
+									statusData.workflowStatus === "completed"
+										? STATUS.TEST_COMPLETED
+										: STATUS.FAILED,
+							});
+						}
+
+						// Update current subnet for in-progress workflows
+						if (statusData.workflowStatus === "in_progress") {
+							updateExecutionStatus({
+								currentSubnet: statusData.currentSubnet,
+							});
+						}
+
+						// Call the custom status update callback
+						if (onStatusUpdate) {
+							onStatusUpdate(statusData);
+						}
+					}
+				);
+
+				// Store request ID
+				updateExecutionStatus({ responseId: requestId });
+				return requestId;
+			} catch (error: unknown) {
+				updateExecutionStatus({ isRunning: false });
+				updateTestStatus({ isRunning: false, status: STATUS.FAILED });
+				throw error;
+			}
+		},
+		[updateExecutionStatus, updateTestStatus]
+	);
+
+	return { executeWorkflow, executeAgentWorkflow };
 }

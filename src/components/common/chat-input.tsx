@@ -6,6 +6,9 @@ import { LucideArrowUp } from "lucide-react";
 import { ChatInputProps } from "@/types/types";
 import { useGlobalStore } from "@/stores/global-store";
 import { useRouter } from "next/navigation";
+import { useWorkflowExecutor } from "@/hooks/use-workflow-executor";
+import { useWallet } from "@/hooks/use-wallet";
+import { AgentDetail } from "@/types";
 
 import Marketplace from "./marketplace";
 
@@ -21,15 +24,58 @@ export default function ChatInput({
 }: ChatInputProps) {
 	const { selectedAgent, setSelectedAgent } = useGlobalStore();
 	const router = useRouter();
+	const { skyBrowser, address } = useWallet();
+	const { executeAgentWorkflow } = useWorkflowExecutor();
 
-	const handleSubmit = (e: React.FormEvent) => {
+	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
 
 		if (mode === "agent") {
 			if (!selectedAgent || !prompt.trim()) {
 				return;
 			}
+
+			// Navigate to agent chat page first
 			router.push(`/chat/agent/${selectedAgent.id}`);
+
+			// Execute workflow if we have the required context
+			if (
+				skyBrowser &&
+				address &&
+				selectedAgent &&
+				"subnet_list" in selectedAgent
+			) {
+				try {
+					console.log(
+						"Executing workflow for agent:",
+						selectedAgent.name
+					);
+					console.log("User prompt:", prompt);
+
+					const requestId = await executeAgentWorkflow(
+						selectedAgent as AgentDetail,
+						prompt,
+						address,
+						skyBrowser,
+						{ address }, // Create a simple web3Context
+						(statusData: any) => {
+							console.log("Workflow status update:", statusData);
+							// You can add status handling here (e.g., update UI, show progress)
+						}
+					);
+
+					console.log("Workflow started with ID:", requestId);
+
+					// Clear the prompt after successful submission
+					setPrompt("");
+				} catch (error) {
+					console.error("Failed to execute workflow:", error);
+					// You can add error handling here (e.g., show error message)
+				}
+			} else {
+				console.warn("Missing required context for workflow execution");
+				// Still navigate to the page, but workflow execution will happen there
+			}
 		} else {
 			if (!prompt.trim()) return;
 			router.push("/chat");

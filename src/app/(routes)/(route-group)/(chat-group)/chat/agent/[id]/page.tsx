@@ -5,6 +5,9 @@ import { useGlobalStore } from "@/stores/global-store";
 import { useParams, useRouter } from "next/navigation";
 import { getAgentById } from "@/controllers/agents";
 import { Button } from "@/components/ui/button";
+import { useWallet } from "@/hooks/use-wallet";
+import { AgentDetail } from "@/types";
+import { workflowExecutor } from "@/utils/workflow-executor";
 
 export default function AgentChatPage() {
 	const {
@@ -20,6 +23,8 @@ export default function AgentChatPage() {
 	const agentId = params.id as string;
 	const [isLoading, setIsLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
+	const [isExecuting, setIsExecuting] = useState(false);
+	const { skyBrowser, address } = useWallet();
 
 	const lastLoadedAgentId = useRef<string | null>(null);
 
@@ -32,10 +37,49 @@ export default function AgentChatPage() {
 		}
 	};
 
-	const handlePromptSubmit = () => {
-		if (prompt.trim() && selectedAgent) {
-			console.log(`Sending prompt to ${selectedAgent.name}:`, prompt);
-			setPrompt("");
+	const handlePromptSubmit = async () => {
+		if (prompt.trim() && selectedAgent && "subnet_list" in selectedAgent) {
+			try {
+				setIsExecuting(true);
+				console.log(
+					`Executing workflow for ${selectedAgent.name}:`,
+					prompt
+				);
+
+				if (skyBrowser && address) {
+					const requestId =
+						await workflowExecutor.executeAgentWorkflow(
+							selectedAgent as AgentDetail,
+							prompt,
+							address,
+							skyBrowser,
+							{ address },
+							(statusData) => {
+								console.log(
+									"Workflow status update:",
+									statusData
+								);
+								// Handle status updates here
+								if (
+									statusData.workflowStatus === "completed" ||
+									statusData.workflowStatus === "failed"
+								) {
+									setIsExecuting(false);
+								}
+							}
+						);
+
+					console.log("Workflow started with ID:", requestId);
+					setPrompt(""); // Clear prompt after successful submission
+				} else {
+					console.warn(
+						"Missing required context for workflow execution"
+					);
+				}
+			} catch (error) {
+				console.error("Failed to execute workflow:", error);
+				setIsExecuting(false);
+			}
 		}
 	};
 
@@ -105,6 +149,18 @@ export default function AgentChatPage() {
 
 	return (
 		<div className="relative w-full h-full flex flex-col">
+			{/* Status indicator */}
+			{isExecuting && (
+				<div className="absolute top-4 left-4 right-4 bg-blue-50 border border-blue-200 rounded-lg p-3">
+					<div className="flex items-center gap-2">
+						<div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+						<span className="text-sm text-blue-800">
+							Executing workflow for {selectedAgent?.name}...
+						</span>
+					</div>
+				</div>
+			)}
+
 			<div className="absolute bottom-4 w-full">
 				<ChatInput
 					onSend={handlePromptSubmit}
