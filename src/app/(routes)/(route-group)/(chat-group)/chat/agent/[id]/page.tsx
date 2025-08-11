@@ -10,7 +10,9 @@ import { useWallet } from "@/hooks/use-wallet";
 import { AgentDetail } from "@/types";
 import { workflowExecutor } from "@/utils/workflow-executor";
 import { useWorkflowExecutionStore } from "@/stores/workflow-execution-store";
+import { useExecutionStatusStore } from "@/stores/execution-status-store";
 import { apiKeyManager } from "@/utils/api-key-manager";
+import { useWorkflowExecutor } from "@/hooks/use-workflow-executor";
 
 type ChatMsg = {
 	id: string;
@@ -80,6 +82,12 @@ export default function AgentChatPage() {
 
 	const { setPollingStatus, stopCurrentExecution, currentExecution } =
 		useWorkflowExecutionStore();
+
+	// Add execution status store for sidebar integration
+	const { updateExecutionStatus } = useExecutionStatusStore();
+
+	// Use the workflow executor hook
+	const { executeAgentWorkflow } = useWorkflowExecutor();
 
 	const lastLoadedAgentId = useRef<string | null>(null);
 	const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -347,55 +355,6 @@ export default function AgentChatPage() {
 										// For any other status, show a neutral message instead of "Failed to process"
 										subnetContent = "Processing...";
 									}
-
-									// Only create/update messages if there's content to show
-									if (
-										subnetContent &&
-										subnetContent.trim() !== ""
-									) {
-										// Parse the response to get image data if present
-										const result = parseAgentResponse(
-											subnet.data
-										);
-
-										if (existingMessageIndex >= 0) {
-											// Update existing message
-											updatedMessages[
-												existingMessageIndex
-											] = {
-												...updatedMessages[
-													existingMessageIndex
-												],
-												subnetStatus: subnet.status,
-												content: subnetContent,
-												imageData: result.imageData,
-												isImage: result.isImage,
-												contentType: result.contentType,
-											};
-										} else {
-											// Create new message for this subnet
-											const newMessage: ChatMsg = {
-												id: `subnet_${index}_${Date.now()}`,
-												type: "workflow_subnet",
-												content: subnetContent,
-												timestamp: new Date(),
-												subnetStatus: subnet.status,
-												toolName: subnet.toolName,
-												subnetIndex: index,
-												imageData: result.imageData,
-												isImage: result.isImage,
-												contentType: result.contentType,
-											};
-
-											updatedMessages.push(newMessage);
-										}
-									} else if (existingMessageIndex >= 0) {
-										// Remove existing message if no content to show
-										updatedMessages.splice(
-											existingMessageIndex,
-											1
-										);
-									}
 								}
 							);
 
@@ -444,7 +403,7 @@ export default function AgentChatPage() {
 							}
 
 							// Remove any old pending messages that are no longer relevant
-							return updatedMessages.filter(
+							const filteredMessages = updatedMessages.filter(
 								(msg) =>
 									msg.type !== "workflow_subnet" ||
 									data.subnets.some(
@@ -452,6 +411,8 @@ export default function AgentChatPage() {
 											index === msg.subnetIndex
 									)
 							);
+
+							return filteredMessages;
 						}
 					});
 
@@ -505,7 +466,7 @@ export default function AgentChatPage() {
 				}
 			};
 
-			const workflowId = await workflowExecutor.executeAgentWorkflow(
+			const workflowId = await executeAgentWorkflow(
 				selectedAgent as any,
 				message,
 				address,
@@ -1077,6 +1038,80 @@ export default function AgentChatPage() {
 			isMounted = false;
 		};
 	}, [agentId, selectedAgent, setSelectedAgent]);
+
+	// Cleanup effect to reset execution status on unmount
+	useEffect(() => {
+		return () => {
+			// Reset execution status when component unmounts
+			updateExecutionStatus({
+				isRunning: false,
+				responseId: undefined,
+				currentSubnet: undefined,
+			});
+		};
+	}, [updateExecutionStatus]);
+
+	// Effect to update execution status when workflow starts
+	useEffect(() => {
+		if (isExecuting && !currentWorkflowId) {
+			updateExecutionStatus({
+				isRunning: true,
+				responseId: undefined,
+				currentSubnet: undefined,
+			});
+		}
+	}, [isExecuting, currentWorkflowId, updateExecutionStatus]);
+
+	// Effect to update execution status when workflow completes
+	useEffect(() => {
+		if (!isExecuting && currentWorkflowId) {
+			updateExecutionStatus({
+				isRunning: false,
+				responseId: undefined,
+				currentSubnet: undefined,
+			});
+		}
+	}, [isExecuting, currentWorkflowId, updateExecutionStatus]);
+
+	// Effect to update execution status when workflow ID changes
+	useEffect(() => {
+		if (currentWorkflowId) {
+			updateExecutionStatus({ responseId: currentWorkflowId });
+		}
+	}, [currentWorkflowId, updateExecutionStatus]);
+
+	// Effect to update execution status when workflow status changes
+	useEffect(() => {
+		if (
+			workflowStatus === "completed" ||
+			workflowStatus === "failed" ||
+			workflowStatus === "stopped"
+		) {
+			updateExecutionStatus({
+				isRunning: false,
+				responseId: undefined,
+				currentSubnet: undefined,
+			});
+		}
+	}, [workflowStatus, updateExecutionStatus]);
+
+	// Effect to update current subnet when workflow data changes
+	useEffect(() => {
+		if (
+			currentWorkflowData?.subnets &&
+			Array.isArray(currentWorkflowData.subnets)
+		) {
+			const inProgressSubnet = currentWorkflowData.subnets.find(
+				(subnet: any) => subnet.status === "in_progress"
+			);
+
+			if (inProgressSubnet) {
+				updateExecutionStatus({
+					currentSubnet: inProgressSubnet.toolName,
+				});
+			}
+		}
+	}, [currentWorkflowData, updateExecutionStatus]);
 
 	if (isLoading) {
 		return (

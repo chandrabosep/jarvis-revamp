@@ -1,5 +1,11 @@
 import { cn, base64ToDataUrl, isImageData } from "@/lib/utils";
 import Image from "next/image";
+import {
+	Info,
+	CircleQuestionMark,
+	CircleAlert,
+	ExternalLinkIcon,
+} from "lucide-react";
 
 interface ChatMessageProps {
 	message: {
@@ -155,23 +161,55 @@ export function ChatMessage({ message, isLast = false }: ChatMessageProps) {
 				</div>
 
 				<div className="flex-1 min-w-0">
-					<div className="text-sm text-yellow-300 font-medium mb-2">
-						{message.questionData?.type === "authentication"
-							? "Authentication Required"
-							: "Feedback Question"}
+					<div className="text-sm font-medium mb-2 flex items-center gap-2">
+						{/* Icon based on question type */}
+						{message.questionData?.type === "authentication" && (
+							<CircleQuestionMark className="w-4 h-4 text-blue-400" />
+						)}
+						{message.questionData?.type === "notification" && (
+							<Info className="w-4 h-4 text-yellow-300" />
+						)}
+						{/* Default icon for other question types */}
+						{(!message.questionData?.type ||
+							(message.questionData.type !== "authentication" &&
+								message.questionData.type !==
+									"notification")) && (
+							<CircleAlert className="w-4 h-4 text-yellow-400" />
+						)}
+
+						{/* Question type text with appropriate color */}
+						<span
+							className={
+								message.questionData?.type === "authentication"
+									? "text-blue-400"
+									: message.questionData?.type ===
+									  "notification"
+									? "text-yellow-400"
+									: "text-yellow-300"
+							}
+						>
+							{message.questionData?.type
+								? message.questionData.type
+										.charAt(0)
+										.toUpperCase() +
+								  message.questionData.type.slice(1)
+								: "Question"}
+						</span>
 					</div>
 					<div className="text-yellow-100 text-sm leading-relaxed">
-						{message.content}
+						{message.questionData?.text || message.content}
 					</div>
 
-					{/* Show authentication button if question type is authentication */}
 					{message.questionData?.type === "authentication" && (
 						<div className="mt-3">
 							<button
 								onClick={() => {
-									// Extract auth URL from the question text
-									const authUrlMatch = message.content.match(
-										/Auth URL: (https?:\/\/[^\s]+)/
+									const questionText =
+										message.questionData?.text ||
+										message.content;
+									// Updated regex to handle the space after "Auth URL:"
+									const authUrlMatch = questionText.match(
+										/Auth URL:\s*(https?:\/\/[^\s]+)/
 									);
 									if (authUrlMatch) {
 										const authUrl = authUrlMatch[1];
@@ -183,23 +221,23 @@ export function ChatMessage({ message, isLast = false }: ChatMessageProps) {
 										);
 									}
 								}}
-								className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors duration-200 flex items-center gap-2"
+								className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors duration-200 flex items-center gap-2 shadow-lg hover:shadow-xl transform hover:scale-105"
 							>
-								<svg
-									className="w-4 h-4"
-									fill="none"
-									stroke="currentColor"
-									viewBox="0 0 24 24"
-								>
-									<path
-										strokeLinecap="round"
-										strokeLinejoin="round"
-										strokeWidth={2}
-										d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-									/>
-								</svg>
+								<ExternalLinkIcon className="w-4 h-4" />
 								Authenticate
 							</button>
+							<p className="text-xs text-blue-300/70 mt-2">
+								Click to authenticate and continue with the
+								workflow
+							</p>
+							{message.questionData?.expiresAt && (
+								<p className="text-xs text-blue-300/50 mt-1">
+									Authentication expires:{" "}
+									{new Date(
+										message.questionData.expiresAt
+									).toLocaleString()}
+								</p>
+							)}
 						</div>
 					)}
 
@@ -451,6 +489,111 @@ export function ChatMessage({ message, isLast = false }: ChatMessageProps) {
 				</div>
 			</div>
 		);
+	}
+
+	// Handle workflow_subnet messages with waiting_response status that contain questions
+	if (
+		message.type === "workflow_subnet" &&
+		message.subnetStatus === "waiting_response" &&
+		message.content &&
+		message.content.includes("question")
+	) {
+		// Try to parse the content as JSON to extract question data
+		try {
+			const subnetData = JSON.parse(message.content);
+			if (subnetData.subnets && subnetData.subnets.length > 0) {
+				const subnet = subnetData.subnets[0];
+				if (
+					subnet.question &&
+					subnet.question.type === "authentication"
+				) {
+					return (
+						<div className="relative flex items-start mb-6">
+							{/* Vertical line that extends to connect with next message */}
+							<div
+								className={cn(
+									"absolute left-2 top-0 w-px bg-gray-600 z-0",
+									isLast ? "h-6" : "h-full"
+								)}
+							></div>
+
+							<div className="relative z-10 flex-shrink-0 ml-1 mr-4">
+								<div className="size-2 rounded-full bg-yellow-500"></div>
+							</div>
+
+							<div className="flex-1 min-w-0">
+								<div className="text-sm font-medium mb-2 flex items-center gap-2">
+									<CircleQuestionMark className="w-4 h-4 text-blue-400" />
+									<span className="text-blue-400">
+										{subnet.question.type
+											.charAt(0)
+											.toUpperCase() +
+											subnet.question.type.slice(1)}
+									</span>
+								</div>
+								<div className="text-yellow-100 text-sm leading-relaxed">
+									{subnet.question.text}
+								</div>
+
+								<div className="mt-3">
+									<button
+										onClick={() => {
+											const questionText =
+												subnet.question.text;
+											// Extract Auth URL from the question text
+											const authUrlMatch =
+												questionText.match(
+													/Auth URL:\s*(https?:\/\/[^\s]+)/
+												);
+											if (authUrlMatch) {
+												const authUrl = authUrlMatch[1];
+												// Open auth URL in new tab
+												window.open(
+													authUrl,
+													"_blank",
+													"noopener,noreferrer"
+												);
+											}
+										}}
+										className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors duration-200 flex items-center gap-2 shadow-lg hover:shadow-xl transform hover:scale-105"
+									>
+										<ExternalLinkIcon className="w-4 h-4" />
+										Authenticate
+									</button>
+									<p className="text-xs text-blue-300/70 mt-2">
+										Click to authenticate and continue with
+										the workflow
+									</p>
+									{subnet.question.expiresAt && (
+										<p className="text-xs text-blue-300/50 mt-1">
+											Authentication expires:{" "}
+											{new Date(
+												subnet.question.expiresAt
+											).toLocaleString()}
+										</p>
+									)}
+								</div>
+
+								{message.toolName && (
+									<div className="text-xs text-yellow-300/70 mt-2 italic">
+										From {message.toolName} agent
+									</div>
+								)}
+								<div className="text-xs text-gray-500 mt-2">
+									{message.timestamp.toLocaleTimeString([], {
+										hour: "2-digit",
+										minute: "2-digit",
+									})}
+								</div>
+							</div>
+						</div>
+					);
+				}
+			}
+		} catch (error) {
+			// If parsing fails, fall through to default handling
+			console.warn("Failed to parse subnet content as JSON:", error);
+		}
 	}
 
 	return (
