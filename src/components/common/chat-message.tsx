@@ -11,6 +11,7 @@ import {
 	X,
 	AlertTriangleIcon,
 	LucideCircleQuestionMark,
+	DownloadIcon,
 	AlertCircle,
 } from "lucide-react";
 import { Button } from "../ui/button";
@@ -75,22 +76,48 @@ export function ChatMessage({
 					{message.imageData && (
 						<div className="mt-3">
 							{message.isImage ? (
-								<Image
-									src={base64ToDataUrl(
-										message.imageData,
-										message.contentType || "image/jpeg"
-									)}
-									alt="Generated image"
-									width={400}
-									height={400}
-									className="rounded-lg border border-border max-w-full h-auto"
-									onError={(e) => {
-										console.error(
-											"Failed to load image:",
-											e
-										);
-									}}
-								/>
+								<div className="flex flex-col items-start gap-2">
+									<Image
+										src={base64ToDataUrl(
+											message.imageData,
+											message.contentType || "image/jpeg"
+										)}
+										alt="Generated image"
+										width={400}
+										height={400}
+										className="rounded-lg border border-border max-w-full h-auto"
+										onError={(e) => {
+											console.error(
+												"Failed to load image:",
+												e
+											);
+										}}
+									/>
+									<Button
+										onClick={() => {
+											const link =
+												document.createElement("a");
+											link.href = base64ToDataUrl(
+												message.imageData!,
+												message.contentType ||
+													"image/jpeg"
+											);
+											link.download =
+												"generated_image." +
+												((message.contentType &&
+													message.contentType.split(
+														"/"
+													)[1]) ||
+													"jpg");
+											link.click();
+										}}
+										variant="outline"
+										size="sm"
+									>
+										<DownloadIcon className="w-4 h-4" />
+										Download
+									</Button>
+								</div>
 							) : (
 								<div className="p-4 border border-border rounded-lg bg-muted/20">
 									<div className="flex items-center gap-3">

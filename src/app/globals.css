@@ -132,6 +132,10 @@ body {
 	@apply bg-transparent;
 }
 
+.scrollbar-hide::-webkit-scrollbar {
+	display: none;
+}
+
 @keyframes flowDown {
 	0% {
 		transform: translateY(-100%);
@@ -145,3 +149,4 @@ body {
 		opacity: 0;
 	}
 }
+

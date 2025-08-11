@@ -1065,7 +1065,7 @@ export default function AgentChatPage() {
 						</div>
 					</div>
 				) : (
-					<div className="overflow-y-hidden scrollbar-thin h-[calc(100vh-10rem)]">
+					<div className="overflow-y-auto scrollbar-hide h-[calc(100vh-10rem)]">
 						{chatMessages.map((message, index) => (
 							<ChatMessage
 								key={message.id}
