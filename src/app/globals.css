@@ -131,3 +131,17 @@ body {
 .scrollbar-thin::-webkit-scrollbar-track {
 	@apply bg-transparent;
 }
+
+@keyframes flowDown {
+	0% {
+		transform: translateY(-100%);
+		opacity: 0;
+	}
+	50% {
+		opacity: 0.6;
+	}
+	100% {
+		transform: translateY(calc(100vh + 100px));
+		opacity: 0;
+	}
+}

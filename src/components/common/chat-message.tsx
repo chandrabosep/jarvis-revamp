@@ -1,11 +1,19 @@
-import { cn, base64ToDataUrl, isImageData } from "@/lib/utils";
+"use client";
+
+import { base64ToDataUrl } from "@/lib/utils";
 import Image from "next/image";
 import {
-	Info,
-	CircleQuestionMark,
+	CircleIcon as CircleQuestionMark,
 	CircleAlert,
 	ExternalLinkIcon,
+	Bell,
+	Check,
+	X,
+	AlertTriangleIcon,
+	LucideCircleQuestionMark,
+	AlertCircle,
 } from "lucide-react";
+import { Button } from "../ui/button";
 
 interface ChatMessageProps {
 	message: {
@@ -17,7 +25,7 @@ interface ChatMessageProps {
 			| "answer"
 			| "pending"
 			| "workflow_subnet"
-			| "pending";
+			| "notification";
 		content: string;
 		timestamp: Date;
 		agentName?: string;
@@ -40,24 +48,33 @@ interface ChatMessageProps {
 			itemID: number;
 			expiresAt: string;
 		};
+		sourceId?: string;
 	};
 	isLast?: boolean;
+	onNotificationYes?: (notification: any) => Promise<void>;
+	onNotificationNo?: (notification: any) => Promise<void>;
+	isPendingNotification?: boolean;
 }
 
-export function ChatMessage({ message, isLast = false }: ChatMessageProps) {
+export function ChatMessage({
+	message,
+	isLast = false,
+	onNotificationYes,
+	onNotificationNo,
+	isPendingNotification = false,
+}: ChatMessageProps) {
+	// User message - the initial prompt
 	if (message.type === "user") {
 		return (
-			<div className="mb-8">
-				<div className="w-full">
+			<div className="relative mb-0">
+				<div className="flex-1 min-w-0 pb-6">
 					<h2 className="text-2xl font-bold text-white leading-tight mb-2 capitalize">
 						{message.content}
 					</h2>
-
 					{/* Display file content if present */}
 					{message.imageData && (
 						<div className="mt-3">
 							{message.isImage ? (
-								// Display image
 								<Image
 									src={base64ToDataUrl(
 										message.imageData,
@@ -75,7 +92,6 @@ export function ChatMessage({ message, isLast = false }: ChatMessageProps) {
 									}}
 								/>
 							) : (
-								// Display file download link or preview
 								<div className="p-4 border border-border rounded-lg bg-muted/20">
 									<div className="flex items-center gap-3">
 										<div className="p-2 bg-primary/10 rounded-lg">
@@ -109,7 +125,6 @@ export function ChatMessage({ message, isLast = false }: ChatMessageProps) {
 										</div>
 										<button
 											onClick={() => {
-												// Create download link for the file
 												const link =
 													document.createElement("a");
 												link.href = base64ToDataUrl(
@@ -133,421 +148,162 @@ export function ChatMessage({ message, isLast = false }: ChatMessageProps) {
 							)}
 						</div>
 					)}
+				</div>
+			</div>
+		);
+	}
 
-					{/* <div className="text-xs text-gray-400">
-						{message.timestamp.toLocaleTimeString([], {
-							hour: "2-digit",
-							minute: "2-digit",
-						})}
-					</div> */}
+	// Notification message - for system notifications
+	if (message.type === "notification") {
+		return (
+			<div className="relative mb-0">
+				{!isLast && (
+					<div
+						className="absolute left-2 top-0 w-px h-full z-0 overflow-hidden"
+						style={{ height: "calc(100% + 1.5rem)" }}
+					>
+						<div className="absolute inset-0 bg-gray-600"></div>
+						<div
+							className="absolute w-full bg-gradient-to-b from-transparent via-blue-400 to-transparent opacity-60"
+							style={{
+								height: "60px",
+								animation: "flowDown 2s ease-in-out infinite",
+								animationDelay: "0.5s",
+							}}
+						></div>
+					</div>
+				)}
+				<div className="relative flex items-start">
+					<div className="relative z-10 flex-shrink-0 ml-0.5 mr-4 pt-1">
+						<div className="size-3 rounded-full border-2 border-gray-700 bg-gray-500"></div>
+					</div>
+					<div className="flex-1 min-w-0 pb-6">
+						<div className="text-sm font-medium mb-2 flex items-center gap-2 text-gray-400">
+							<Bell className="w-4 h-4" />
+							<span>Notification</span>
+						</div>
+						<div className="bg-sidebar/20 border border-border rounded-lg p-3">
+							<div className="text-foreground text-sm leading-relaxed">
+								{message.content}
+							</div>
+							{/* Show Yes/No buttons if this is a pending notification */}
+							{isPendingNotification &&
+								onNotificationYes &&
+								onNotificationNo && (
+									<div className="flex gap-3 mt-4">
+										<Button
+											onClick={() =>
+												onNotificationYes(message)
+											}
+											variant="outline"
+											size="sm"
+											className="flex items-center gap-2 text-green-500 hover:text-green-400 bg-green-950/60 hover:bg-green-950/70 border border-green-800/50 hover:border-green-800/70"
+										>
+											<Check className="w-4 h-4" />
+											Yes
+										</Button>
+										<Button
+											onClick={() =>
+												onNotificationNo(message)
+											}
+											variant="outline"
+											size="sm"
+											className="flex items-center gap-2 text-red-500 hover:text-red-400 bg-red-950/60 hover:bg-red-950/70 border border-red-800/50 hover:border-red-800/70"
+										>
+											<X className="w-4 h-4" />
+											No
+										</Button>
+									</div>
+								)}
+						</div>
+						{message.toolName && (
+							<div className="text-xs text-gray-400 mt-2 italic">
+								From {message.toolName} agent
+							</div>
+						)}
+						<div className="text-xs text-gray-500 mt-2">
+							{message.timestamp.toLocaleTimeString([], {
+								hour: "2-digit",
+								minute: "2-digit",
+							})}
+						</div>
+					</div>
 				</div>
 			</div>
 		);
 	}
 
 	if (message.type === "question") {
+		const isAuthentication =
+			message.questionData?.type === "authentication";
 		return (
-			<div className="relative flex items-start mb-6">
-				{/* Vertical line that extends to connect with next message */}
-				<div
-					className={cn(
-						"absolute left-2 top-0 w-px bg-gray-600 z-0",
-						isLast ? "h-6" : "h-full"
-					)}
-				></div>
-
-				<div className="relative z-10 flex-shrink-0 ml-1 mr-4">
-					<div className="size-2 rounded-full bg-yellow-500"></div>
-				</div>
-
-				<div className="flex-1 min-w-0">
-					<div className="text-sm font-medium mb-2 flex items-center gap-2">
-						{/* Icon based on question type */}
-						{message.questionData?.type === "authentication" && (
-							<CircleQuestionMark className="w-4 h-4 text-blue-400" />
-						)}
-						{message.questionData?.type === "notification" && (
-							<Info className="w-4 h-4 text-yellow-300" />
-						)}
-						{/* Default icon for other question types */}
-						{(!message.questionData?.type ||
-							(message.questionData.type !== "authentication" &&
-								message.questionData.type !==
-									"notification")) && (
-							<CircleAlert className="w-4 h-4 text-yellow-400" />
-						)}
-
-						{/* Question type text with appropriate color */}
-						<span
-							className={
-								message.questionData?.type === "authentication"
-									? "text-blue-400"
-									: message.questionData?.type ===
-									  "notification"
-									? "text-yellow-400"
-									: "text-yellow-300"
-							}
-						>
-							{message.questionData?.type
-								? message.questionData.type
-										.charAt(0)
-										.toUpperCase() +
-								  message.questionData.type.slice(1)
-								: "Question"}
-						</span>
+			<div className="relative mb-0">
+				{!isLast && (
+					<div
+						className="absolute left-2 top-0 w-px h-full z-0 overflow-hidden"
+						style={{ height: "calc(100% + 1.5rem)" }}
+					>
+						<div className="absolute inset-0 bg-gray-600"></div>
+						<div
+							className="absolute w-full bg-gradient-to-b from-transparent via-blue-400 to-transparent opacity-60"
+							style={{
+								height: "60px",
+								animation: "flowDown 2s ease-in-out infinite",
+								animationDelay: "1s",
+							}}
+						></div>
 					</div>
-					<div className="text-yellow-100 text-sm leading-relaxed">
-						{message.questionData?.text || message.content}
+				)}
+				<div className="relative flex items-start">
+					<div className="relative z-10 flex-shrink-0 ml-0.5 mr-4 pt-1">
+						<div className="size-3 rounded-full border-2 border-gray-700 bg-gray-500"></div>
 					</div>
-
-					{message.questionData?.type === "authentication" && (
-						<div className="mt-3">
-							<button
-								onClick={() => {
-									const questionText =
-										message.questionData?.text ||
-										message.content;
-									// Updated regex to handle the space after "Auth URL:"
-									const authUrlMatch = questionText.match(
-										/Auth URL:\s*(https?:\/\/[^\s]+)/
-									);
-									if (authUrlMatch) {
-										const authUrl = authUrlMatch[1];
-										// Open auth URL in new tab
-										window.open(
-											authUrl,
-											"_blank",
-											"noopener,noreferrer"
-										);
-									}
-								}}
-								className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors duration-200 flex items-center gap-2 shadow-lg hover:shadow-xl transform hover:scale-105"
-							>
-								<ExternalLinkIcon className="w-4 h-4" />
-								Authenticate
-							</button>
-							<p className="text-xs text-blue-300/70 mt-2">
-								Click to authenticate and continue with the
-								workflow
-							</p>
-							{message.questionData?.expiresAt && (
-								<p className="text-xs text-blue-300/50 mt-1">
-									Authentication expires:{" "}
-									{new Date(
-										message.questionData.expiresAt
-									).toLocaleString()}
-								</p>
-							)}
-						</div>
-					)}
-
-					{/* Display file content if present */}
-					{message.imageData && (
-						<div className="mt-3">
-							{message.isImage ? (
-								// Display image
-								<Image
-									src={base64ToDataUrl(
-										message.imageData,
-										message.contentType || "image/jpeg"
-									)}
-									alt="Generated image"
-									width={400}
-									height={400}
-									className="rounded-lg border border-border max-w-full h-auto"
-									onError={(e) => {
-										console.error(
-											"Failed to load image:",
-											e
-										);
-									}}
-								/>
+					<div className="flex-1 min-w-0 pb-6">
+						<div className="text-sm font-medium mb-2 flex items-center gap-2 text-gray-400">
+							{isAuthentication ? (
+								<LucideCircleQuestionMark className="w-4 h-4" />
 							) : (
-								// Display file download link or preview
-								<div className="p-4 border border-border rounded-lg bg-muted/20">
-									<div className="flex items-center gap-3">
-										<div className="p-2 bg-primary/10 rounded-lg">
-											<svg
-												className="w-6 h-6 text-primary"
-												fill="none"
-												stroke="currentColor"
-												viewBox="0 0 24 24"
-											>
-												<path
-													strokeLinecap="round"
-													strokeLinejoin="round"
-													strokeWidth={2}
-													d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-												/>
-											</svg>
-										</div>
-										<div className="flex-1">
-											<p className="text-sm font-medium text-foreground">
-												{message.contentType
-													? message.contentType
-															.split("/")[1]
-															.toUpperCase()
-													: "File"}{" "}
-												generated
-											</p>
-											<p className="text-xs text-muted-foreground">
-												{message.contentType ||
-													"Unknown type"}
-											</p>
-										</div>
-										<button
-											onClick={() => {
-												// Create download link for the file
-												const link =
-													document.createElement("a");
-												link.href = base64ToDataUrl(
-													message.imageData!,
-													message.contentType ||
-														"application/octet-stream"
-												);
-												link.download = `generated_file.${
-													message.contentType?.split(
-														"/"
-													)[1] || "bin"
-												}`;
-												link.click();
-											}}
-											className="px-3 py-1 text-xs bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
-										>
-											Download
-										</button>
-									</div>
-								</div>
+								<AlertCircle className="size-4 " />
 							)}
-						</div>
-					)}
-
-					{message.toolName && (
-						<div className="text-xs text-yellow-300/70 mt-2 italic">
-							From {message.toolName} agent
-						</div>
-					)}
-					<div className="text-xs text-gray-500 mt-2">
-						{message.timestamp.toLocaleTimeString([], {
-							hour: "2-digit",
-							minute: "2-digit",
-						})}
-					</div>
-				</div>
-			</div>
-		);
-	}
-
-	if (message.type === "answer") {
-		return (
-			<div className="relative flex items-start mb-6">
-				{/* Vertical line that extends to connect with next message */}
-				<div
-					className={cn(
-						"absolute left-2 top-0 w-px bg-gray-600 z-0",
-						isLast ? "h-6" : "h-full"
-					)}
-				></div>
-
-				<div className="relative z-10 flex-shrink-0 ml-0.5 mr-4">
-					<div className="size-3 rounded-full border-2 border-gray-700 bg-gray-500"></div>
-				</div>
-
-				<div className="flex-1 min-w-0 ">
-					<div className="w-fit px-5 py-0.5 rounded-xl border border-border text-foreground text-sm leading-relaxed whitespace-pre-wrap ">
-						{message.content}
-					</div>
-
-					{/* Display file content if present */}
-					{message.imageData && (
-						<div className="mt-3">
-							{message.isImage ? (
-								// Display image
-								<Image
-									src={base64ToDataUrl(
-										message.imageData,
-										message.contentType || "image/jpeg"
-									)}
-									alt="Generated image"
-									width={400}
-									height={400}
-									className="rounded-lg border border-border max-w-full h-auto"
-									onError={(e) => {
-										console.error(
-											"Failed to load image:",
-											e
-										);
-									}}
-								/>
-							) : (
-								// Display file download link or preview
-								<div className="p-4 border border-border rounded-lg bg-muted/20">
-									<div className="flex items-center gap-3">
-										<div className="p-2 bg-primary/10 rounded-lg">
-											<svg
-												className="w-6 h-6 text-primary"
-												fill="none"
-												stroke="currentColor"
-												viewBox="0 0 24 24"
-											>
-												<path
-													strokeLinecap="round"
-													strokeLinejoin="round"
-													strokeWidth={2}
-													d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-												/>
-											</svg>
-										</div>
-										<div className="flex-1">
-											<p className="text-sm font-medium text-foreground">
-												{message.contentType
-													? message.contentType
-															.split("/")[1]
-															.toUpperCase()
-													: "File"}{" "}
-												generated
-											</p>
-											<p className="text-xs text-muted-foreground">
-												{message.contentType ||
-													"Unknown type"}
-											</p>
-										</div>
-										<button
-											onClick={() => {
-												// Create download link for the file
-												const link =
-													document.createElement("a");
-												link.href = base64ToDataUrl(
-													message.imageData!,
-													message.contentType ||
-														"application/octet-stream"
-												);
-												link.download = `generated_file.${
-													message.contentType?.split(
-														"/"
-													)[1] || "bin"
-												}`;
-												link.click();
-											}}
-											className="px-3 py-1 text-xs bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
-										>
-											Download
-										</button>
-									</div>
-								</div>
-							)}
-						</div>
-					)}
-
-					<div className="text-xs text-gray-500 mt-2">
-						{message.timestamp.toLocaleTimeString([], {
-							hour: "2-digit",
-							minute: "2-digit",
-						})}
-					</div>
-				</div>
-			</div>
-		);
-	}
-
-	if (
-		message.type === "workflow_subnet" &&
-		message.subnetStatus === "pending"
-	) {
-		// Show pending subnet messages instead of hiding them
-		return (
-			<div className="relative flex items-start mb-6">
-				{/* Vertical line that extends to connect with next message */}
-				<div
-					className={cn(
-						"absolute left-2 top-0 w-px bg-gray-600 z-0",
-						isLast ? "h-6" : "h-full"
-					)}
-				></div>
-
-				<div className="relative z-10 flex-shrink-0 ml-0.5 mr-4">
-					<div className="size-3 rounded-full border-2 border-gray-700 bg-gray-500"></div>
-				</div>
-
-				<div className="flex-1 min-w-0">
-					{message.toolName && (
-						<div className="text-sm text-gray-400 mb-1 italic">
-							{message.toolName} agent queued
-						</div>
-					)}
-
-					<div className="text-gray-300 text-sm leading-relaxed whitespace-pre-wrap">
-						{message.content}
-					</div>
-
-					<div className="text-xs text-gray-500 mt-2">
-						{message.timestamp.toLocaleTimeString([], {
-							hour: "2-digit",
-							minute: "2-digit",
-						})}
-					</div>
-				</div>
-			</div>
-		);
-	}
-
-	// Handle workflow_subnet messages with waiting_response status that contain questions
-	if (
-		message.type === "workflow_subnet" &&
-		message.subnetStatus === "waiting_response" &&
-		message.content &&
-		message.content.includes("question")
-	) {
-		// Try to parse the content as JSON to extract question data
-		try {
-			const subnetData = JSON.parse(message.content);
-			if (subnetData.subnets && subnetData.subnets.length > 0) {
-				const subnet = subnetData.subnets[0];
-				if (
-					subnet.question &&
-					subnet.question.type === "authentication"
-				) {
-					return (
-						<div className="relative flex items-start mb-6">
-							{/* Vertical line that extends to connect with next message */}
-							<div
-								className={cn(
-									"absolute left-2 top-0 w-px bg-gray-600 z-0",
-									isLast ? "h-6" : "h-full"
-								)}
-							></div>
-
-							<div className="relative z-10 flex-shrink-0 ml-1 mr-4">
-								<div className="size-2 rounded-full bg-yellow-500"></div>
-							</div>
-
-							<div className="flex-1 min-w-0">
-								<div className="text-sm font-medium mb-2 flex items-center gap-2">
-									<CircleQuestionMark className="w-4 h-4 text-blue-400" />
-									<span className="text-blue-400">
-										{subnet.question.type
+							<span>
+								{message.questionData?.type
+									? message.questionData.type
 											.charAt(0)
 											.toUpperCase() +
-											subnet.question.type.slice(1)}
-									</span>
-								</div>
-								<div className="text-yellow-100 text-sm leading-relaxed">
-									{subnet.question.text}
-								</div>
-
-								<div className="mt-3">
-									<button
+									  message.questionData.type.slice(1)
+									: "Question"}
+							</span>
+						</div>
+						<div className="bg-sidebar/20 border border-border rounded-lg p-3">
+							<div className="text-foreground text-sm leading-relaxed overflow-hidden">
+								{message.questionData?.text || message.content}
+							</div>
+							{isAuthentication && (
+								<div className="mt-3 space-y-2">
+									{message.questionData?.expiresAt && (
+										<p className="text-xs text-gray-400 mt-2">
+											Expires at{" "}
+											<span>
+												{new Date(
+													message.questionData.expiresAt
+												).toLocaleTimeString([], {
+													hour: "2-digit",
+													minute: "2-digit",
+												})}
+											</span>
+										</p>
+									)}
+									<Button
 										onClick={() => {
 											const questionText =
-												subnet.question.text;
-											// Extract Auth URL from the question text
+												message.questionData?.text ||
+												message.content;
 											const authUrlMatch =
 												questionText.match(
 													/Auth URL:\s*(https?:\/\/[^\s]+)/
 												);
 											if (authUrlMatch) {
 												const authUrl = authUrlMatch[1];
-												// Open auth URL in new tab
 												window.open(
 													authUrl,
 													"_blank",
@@ -555,181 +311,281 @@ export function ChatMessage({ message, isLast = false }: ChatMessageProps) {
 												);
 											}
 										}}
-										className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors duration-200 flex items-center gap-2 shadow-lg hover:shadow-xl transform hover:scale-105"
+										variant="outline"
+										size="sm"
+										className="flex items-center gap-2 text-gray-300 hover:text-gray-400 bg-sidebar/30 hover:bg-sidebar/20 border border-border hover:border-border/70"
 									>
 										<ExternalLinkIcon className="w-4 h-4" />
 										Authenticate
-									</button>
-									<p className="text-xs text-blue-300/70 mt-2">
-										Click to authenticate and continue with
-										the workflow
-									</p>
-									{subnet.question.expiresAt && (
-										<p className="text-xs text-blue-300/50 mt-1">
-											Authentication expires:{" "}
-											{new Date(
-												subnet.question.expiresAt
-											).toLocaleString()}
-										</p>
-									)}
+									</Button>
 								</div>
-
-								{message.toolName && (
-									<div className="text-xs text-yellow-300/70 mt-2 italic">
-										From {message.toolName} agent
-									</div>
-								)}
-								<div className="text-xs text-gray-500 mt-2">
-									{message.timestamp.toLocaleTimeString([], {
-										hour: "2-digit",
-										minute: "2-digit",
-									})}
-								</div>
-							</div>
+							)}
 						</div>
-					);
-				}
-			}
-		} catch (error) {
-			// If parsing fails, fall through to default handling
-			console.warn("Failed to parse subnet content as JSON:", error);
-		}
-	}
-
-	return (
-		<div className="relative flex items-start mb-6">
-			<div className="absolute left-2 top-0 bottom-0 w-px bg-gray-600 z-0"></div>
-
-			<div className="relative z-10 flex-shrink-0 ml-0.5 mr-4 rounded-full">
-				{(message.type === "workflow_subnet" &&
-					message.subnetStatus === "in_progress") ||
-				message.type === "pending" ? (
-					<span className="relative flex size-3">
-						<span className="absolute h-full w-full animate-ping rounded-full bg-accent opacity-75"></span>
-						<span className="relative size-3 inline-flex rounded-full bg-accent"></span>
-					</span>
-				) : message.type === "workflow_subnet" &&
-				  message.subnetStatus === "waiting_response" ? (
-					<span className="relative flex size-3">
-						<span className="absolute h-full w-full animate-ping rounded-full bg-yellow-500 opacity-75"></span>
-						<span className="relative size-3 inline-flex rounded-full bg-yellow-500"></span>
-					</span>
-				) : message.type === "workflow_subnet" &&
-				  message.subnetStatus === "done" ? (
-					<div className="size-3 rounded-full border-2 border-gray-700 bg-gray-500"></div>
-				) : (
-					// Default gray circle for any other status
-					<div className="size-3 rounded-full border-2 border-gray-700 bg-gray-500"></div>
-				)}
-			</div>
-
-			<div className="flex-1 min-w-0">
-				{(message.agentName ||
-					(message.type === "workflow_subnet" &&
-						message.toolName)) && (
-					<div
-						className={`text-sm text-gray-400 mb-1${
-							message.type === "workflow_subnet" &&
-							message.toolName
-								? " italic"
-								: ""
-						}`}
-					>
-						Message from{" "}
-						{message.type === "workflow_subnet" && message.toolName
-							? `${message.toolName} agent`
-							: message.agentName}
-						...
-					</div>
-				)}
-
-				<div className="text-gray-200 text-sm leading-relaxed whitespace-pre-wrap">
-					{message.content}
-				</div>
-
-				{/* Display file content if present */}
-				{message.imageData && (
-					<div className="mt-3">
-						{message.isImage ? (
-							// Display image
-							<Image
-								src={base64ToDataUrl(
-									message.imageData,
-									message.contentType || "image/jpeg"
-								)}
-								alt="Generated image"
-								width={400}
-								height={400}
-								className="rounded-lg border border-border max-w-full h-auto"
-								onError={(e) => {
-									console.error("Failed to load image:", e);
-								}}
-							/>
-						) : (
-							// Display file download link or preview
-							<div className="p-4 border border-border rounded-lg bg-muted/20">
-								<div className="flex items-center gap-3">
-									<div className="p-2 bg-primary/10 rounded-lg">
-										<svg
-											className="w-6 h-6 text-primary"
-											fill="none"
-											stroke="currentColor"
-											viewBox="0 0 24 24"
-										>
-											<path
-												strokeLinecap="round"
-												strokeLinejoin="round"
-												strokeWidth={2}
-												d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-											/>
-										</svg>
-									</div>
-									<div className="flex-1">
-										<p className="text-sm font-medium text-foreground">
-											{message.contentType
-												? message.contentType
-														.split("/")[1]
-														.toUpperCase()
-												: "File"}{" "}
-											generated
-										</p>
-										<p className="text-xs text-muted-foreground">
-											{message.contentType ||
-												"Unknown type"}
-										</p>
-									</div>
-									<button
-										onClick={() => {
-											// Create download link for the file
-											const link =
-												document.createElement("a");
-											link.href = base64ToDataUrl(
-												message.imageData!,
-												message.contentType ||
-													"application/octet-stream"
-											);
-											link.download = `generated_file.${
-												message.contentType?.split(
-													"/"
-												)[1] || "bin"
-											}`;
-											link.click();
-										}}
-										className="px-3 py-1 text-xs bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
-									>
-										Download
-									</button>
-								</div>
+						{message.toolName && (
+							<div className="text-xs mt-2 italic text-gray-400">
+								From {message.toolName} agent
 							</div>
 						)}
+						<div className="text-xs text-gray-500 mt-2">
+							{message.timestamp.toLocaleTimeString([], {
+								hour: "2-digit",
+								minute: "2-digit",
+							})}
+						</div>
+					</div>
+				</div>
+			</div>
+		);
+	}
+
+	// Answer message - user's response to a question
+	if (message.type === "answer") {
+		return (
+			<div className="relative mb-0">
+				{!isLast && (
+					<div
+						className="absolute left-2 top-0 w-px h-full z-0 overflow-hidden"
+						style={{ height: "calc(100% + 1.5rem)" }}
+					>
+						<div className="absolute inset-0 bg-gray-600"></div>
+						<div
+							className="absolute w-full bg-gradient-to-b from-transparent via-blue-400 to-transparent opacity-60"
+							style={{
+								height: "60px",
+								animation: "flowDown 2s ease-in-out infinite",
+								animationDelay: "1.5s",
+							}}
+						></div>
 					</div>
 				)}
+				<div className="relative flex items-start">
+					<div className="relative z-10 flex-shrink-0 ml-0.5 mr-4 pt-1">
+						<div className="size-3 rounded-full border-2 border-gray-700 bg-gray-500"></div>
+					</div>
+					<div className="flex-1 min-w-0 pb-6">
+						<div className="w-fit px-5 py-2 rounded-lg border border-border bg-sidebar/20 text-foreground text-sm leading-relaxed">
+							{message.content}
+						</div>
+						<div className="text-xs text-gray-500 mt-2">
+							{message.timestamp.toLocaleTimeString([], {
+								hour: "2-digit",
+								minute: "2-digit",
+							})}
+						</div>
+					</div>
+				</div>
+			</div>
+		);
+	}
 
-				<div className="text-xs text-gray-500 mt-2">
-					{message.timestamp.toLocaleTimeString([], {
-						hour: "2-digit",
-						minute: "2-digit",
-					})}
+	// Workflow subnet message - shows status of individual workflow steps
+	if (message.type === "workflow_subnet") {
+		const getStatusIcon = () => {
+			switch (message.subnetStatus) {
+				case "in_progress":
+				case "waiting_response":
+					return (
+						<span className="relative flex size-3">
+							<span className="absolute h-full w-full animate-ping rounded-full bg-accent opacity-75"></span>
+							<span className="relative size-3 inline-flex rounded-full bg-accent"></span>
+						</span>
+					);
+				default:
+					// All other statuses: gray, same size and style
+					return (
+						<div className="size-3 rounded-full border-2 border-gray-700 bg-gray-500"></div>
+					);
+			}
+		};
+
+		const getStatusText = () => {
+			switch (message.subnetStatus) {
+				case "pending":
+					return "Queued";
+				case "in_progress":
+					return "Processing";
+				case "waiting_response":
+					return "Waiting for input";
+				case "done":
+					return "Completed";
+				case "failed":
+					return "Failed";
+				default:
+					return "";
+			}
+		};
+
+		return (
+			<div className="relative mb-0">
+				{!isLast && (
+					<div
+						className="absolute left-2 top-0 w-px h-full z-0 overflow-hidden"
+						style={{ height: "calc(100% + 1.5rem)" }}
+					>
+						<div className="absolute inset-0 bg-gray-600"></div>
+						<div
+							className="absolute w-full bg-gradient-to-b from-transparent via-blue-400 to-transparent opacity-60"
+							style={{
+								height: "60px",
+								animation: "flowDown 2s ease-in-out infinite",
+								animationDelay: "2s",
+							}}
+						></div>
+					</div>
+				)}
+				<div className="relative flex items-start">
+					<div className="relative z-10 flex-shrink-0 ml-0.5 mr-4 pt-1">
+						{getStatusIcon()}
+					</div>
+					<div className="flex-1 min-w-0 pb-6">
+						{message.toolName && (
+							<div className="text-sm mb-1 flex items-center gap-2">
+								<span className="text-gray-400 italic">
+									{message.toolName} agent
+								</span>
+								{getStatusText() &&
+									message.subnetStatus !== "done" && (
+										<>
+											<span className="text-gray-600">
+												•
+											</span>
+											<span className="text-xs text-gray-400">
+												{getStatusText()}
+											</span>
+										</>
+									)}
+							</div>
+						)}
+						{/* Only show content if not pending */}
+						{message.subnetStatus !== "pending" && (
+							<div className="text-gray-200 text-sm leading-relaxed whitespace-pre-wrap">
+								{message.content}
+							</div>
+						)}
+						{/* Display file content if present */}
+						{message.imageData && (
+							<div className="mt-3">
+								{message.isImage ? (
+									<Image
+										src={base64ToDataUrl(
+											message.imageData,
+											message.contentType || "image/jpeg"
+										)}
+										alt="Generated image"
+										width={400}
+										height={400}
+										className="rounded-lg border border-border max-w-full h-auto"
+										onError={(e) => {
+											console.error(
+												"Failed to load image:",
+												e
+											);
+										}}
+									/>
+								) : (
+									<div className="p-4 border border-border rounded-lg bg-muted/20">
+										<div className="flex items-center gap-3">
+											<div className="p-2 bg-primary/10 rounded-lg">
+												<svg
+													className="w-6 h-6 text-primary"
+													fill="none"
+													stroke="currentColor"
+													viewBox="0 0 24 24"
+												>
+													<path
+														strokeLinecap="round"
+														strokeLinejoin="round"
+														strokeWidth={2}
+														d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.293.707l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+													/>
+												</svg>
+											</div>
+											<div className="flex-1">
+												<p className="text-sm font-medium text-foreground">
+													{message.contentType
+														? message.contentType
+																.split("/")[1]
+																.toUpperCase()
+														: "File"}{" "}
+													generated
+												</p>
+												<p className="text-xs text-muted-foreground">
+													{message.contentType ||
+														"Unknown type"}
+												</p>
+											</div>
+											<button
+												onClick={() => {
+													const link =
+														document.createElement(
+															"a"
+														);
+													link.href = base64ToDataUrl(
+														message.imageData!,
+														message.contentType ||
+															"application/octet-stream"
+													);
+													link.download = `generated_file.${
+														message.contentType?.split(
+															"/"
+														)[1] || "bin"
+													}`;
+													link.click();
+												}}
+												className="px-3 py-1 text-xs bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+											>
+												Download
+											</button>
+										</div>
+									</div>
+								)}
+							</div>
+						)}
+						<div className="text-xs text-gray-500 mt-2">
+							{message.timestamp.toLocaleTimeString([], {
+								hour: "2-digit",
+								minute: "2-digit",
+							})}
+						</div>
+					</div>
+				</div>
+			</div>
+		);
+	}
+
+	// Response message - general system responses
+	return (
+		<div className="relative mb-0">
+			{!isLast && (
+				<div
+					className="absolute left-2 top-0 w-px h-full z-0 overflow-hidden"
+					style={{ height: "calc(100% + 1.5rem)" }}
+				>
+					<div className="absolute inset-0 bg-gray-600"></div>
+					<div
+						className="absolute w-full bg-gradient-to-b from-transparent via-blue-400 to-transparent opacity-60"
+						style={{
+							height: "60px",
+							animation: "flowDown 2s ease-in-out infinite",
+							animationDelay: "2.5s",
+						}}
+					></div>
+				</div>
+			)}
+			<div className="relative flex items-start">
+				<div className="relative z-10 flex-shrink-0 ml-0.5 mr-4 pt-1">
+					<div className="size-3 rounded-full border-2 border-gray-700 bg-gray-500"></div>
+				</div>
+				<div className="flex-1 min-w-0 pb-6">
+					<div className="text-gray-200 text-sm leading-relaxed whitespace-pre-wrap">
+						{message.content}
+					</div>
+					<div className="text-xs text-gray-500 mt-2">
+						{message.timestamp.toLocaleTimeString([], {
+							hour: "2-digit",
+							minute: "2-digit",
+						})}
+					</div>
 				</div>
 			</div>
 		</div>

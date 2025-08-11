@@ -3,6 +3,7 @@ import React from "react";
 import ConnectButton from "@/components/wallet/connect-button";
 import { useWallet } from "@/hooks/use-wallet";
 import { useRouter } from "next/navigation";
+import SkynetParticles from "@/components/common/skynet.particles";
 
 export default function page() {
 	const router = useRouter();
@@ -12,7 +13,7 @@ export default function page() {
 	}
 	return (
 		<div className="flex flex-col items-center justify-center h-screen bg-black">
-			<ConnectButton />
+			<SkynetParticles />
 		</div>
 	);
 }

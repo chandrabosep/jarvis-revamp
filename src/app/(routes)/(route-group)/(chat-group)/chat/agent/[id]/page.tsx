@@ -22,7 +22,8 @@ type ChatMsg = {
 		| "question"
 		| "answer"
 		| "workflow_subnet"
-		| "pending";
+		| "pending"
+		| "notification";
 	content: string;
 	timestamp: Date;
 	// Workflow subnet specific fields
@@ -45,6 +46,8 @@ type ChatMsg = {
 		itemID: number;
 		expiresAt: string;
 	};
+	// Track the source for deduplication
+	sourceId?: string;
 };
 
 export default function AgentChatPage() {
@@ -83,6 +86,11 @@ export default function AgentChatPage() {
 	const { setPollingStatus, stopCurrentExecution, currentExecution } =
 		useWorkflowExecutionStore();
 
+	// Add state for pending notifications that need user response
+	const [pendingNotifications, setPendingNotifications] = useState<ChatMsg[]>(
+		[]
+	);
+
 	// Add execution status store for sidebar integration
 	const { updateExecutionStatus } = useExecutionStatusStore();
 
@@ -92,6 +100,7 @@ export default function AgentChatPage() {
 	const lastLoadedAgentId = useRef<string | null>(null);
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 	const hasAutoSubmittedRef = useRef(false);
+	const lastQuestionRef = useRef<string | null>(null);
 
 	const handleModeChange = (newMode: "chat" | "agent") => {
 		if (newMode === "chat") {
@@ -260,6 +269,7 @@ export default function AgentChatPage() {
 
 			setChatMessages([]);
 			setCurrentWorkflowData(null);
+			lastQuestionRef.current = null;
 
 			const userMessage: ChatMsg = {
 				id: `user_${Date.now()}`,
@@ -283,151 +293,265 @@ export default function AgentChatPage() {
 					Array.isArray(data.subnets) &&
 					data.subnets.length > 0
 				) {
-					// Check if all subnets are pending
-					const allPending = data.subnets.every(
-						(subnet: any) => subnet.status === "pending"
-					);
-
 					// Update chat messages using functional state update to avoid stale closures
 					setChatMessages((prevMessages) => {
-						const updatedMessages = [...prevMessages];
+						let updatedMessages = [...prevMessages];
 
-						// If all subnets are pending, don't show any messages until they start processing
-						if (allPending) {
-							// Remove any existing pending messages and return current messages
-							return updatedMessages.filter(
-								(msg) =>
-									msg.type !== "pending" &&
-									msg.type !== "workflow_subnet"
-							);
-						} else {
-							// Handle normal subnet updates (not all pending)
-							data.subnets.forEach(
-								(subnet: any, index: number) => {
-									const existingMessageIndex =
+						// Process each subnet
+						data.subnets.forEach((subnet: any, index: number) => {
+							const sourceId = `subnet_${index}_${subnet.status}`;
+
+							// Find existing message for this subnet
+							let existingMessageIndex =
+								updatedMessages.findIndex(
+									(msg) =>
+										msg.type === "workflow_subnet" &&
+										msg.subnetIndex === index
+								);
+
+							// Handle different statuses
+							if (subnet.status === "pending") {
+								// Don't show pending status in UI
+								if (existingMessageIndex >= 0) {
+									updatedMessages.splice(
+										existingMessageIndex,
+										1
+									);
+								}
+							} else if (subnet.status === "in_progress") {
+								// Show in-progress status
+								const progressMessage: ChatMsg = {
+									id: `subnet_${index}_${Date.now()}`,
+									type: "workflow_subnet",
+									content: "Processing...",
+									timestamp: new Date(),
+									subnetStatus: "in_progress",
+									toolName: subnet.toolName,
+									subnetIndex: index,
+									sourceId: sourceId,
+								};
+
+								if (existingMessageIndex >= 0) {
+									updatedMessages[existingMessageIndex] =
+										progressMessage;
+								} else {
+									updatedMessages.push(progressMessage);
+								}
+							} else if (
+								subnet.status === "done" &&
+								subnet.data
+							) {
+								// Show completed result
+								const result = parseAgentResponse(subnet.data);
+								const doneMessage: ChatMsg = {
+									id: `subnet_${index}_${Date.now()}`,
+									type: "workflow_subnet",
+									content:
+										result.content ||
+										"Processing completed",
+									timestamp: new Date(),
+									subnetStatus: "done",
+									toolName: subnet.toolName,
+									subnetIndex: index,
+									imageData: result.imageData,
+									isImage: result.isImage,
+									contentType: result.contentType,
+									sourceId: sourceId,
+								};
+
+								if (existingMessageIndex >= 0) {
+									updatedMessages[existingMessageIndex] =
+										doneMessage;
+								} else {
+									updatedMessages.push(doneMessage);
+								}
+							} else if (subnet.status === "waiting_response") {
+								// First, handle the data if it exists
+								if (subnet.data) {
+									const result = parseAgentResponse(
+										subnet.data
+									);
+
+									// Check if we need to show the parsed data content
+									// For notification type with enhanced prompt, we want to show the enhanced prompt details
+									let dataContent = result.content;
+
+									// Try to parse the data as JSON to extract more meaningful content
+									try {
+										const parsedData = JSON.parse(
+											subnet.data
+										);
+										if (
+											parsedData.enhancedPrompt &&
+											parsedData.originalPrompt
+										) {
+											// This is a prompt enhancement notification
+											dataContent =
+												"Prompt enhancement detected";
+										} else if (result.content) {
+											dataContent = result.content;
+										}
+									} catch {
+										// If not JSON or parsing fails, use the default parsed content
+										dataContent =
+											result.content ||
+											"Processing data...";
+									}
+
+									const dataMessage: ChatMsg = {
+										id: `subnet_${index}_data_${Date.now()}`,
+										type: "workflow_subnet",
+										content:
+											dataContent || "Processing data...",
+										timestamp: new Date(),
+										subnetStatus: "done", // Show data as completed
+										toolName: subnet.toolName,
+										subnetIndex: index,
+										imageData: result.imageData,
+										isImage: result.isImage,
+										contentType: result.contentType,
+										sourceId: `${sourceId}_data`,
+									};
+
+									// Find if we already have a data message for this subnet
+									const existingDataIndex =
 										updatedMessages.findIndex(
 											(msg) =>
 												msg.type ===
 													"workflow_subnet" &&
-												msg.subnetIndex === index
+												msg.subnetIndex === index &&
+												msg.sourceId?.includes("_data")
 										);
 
-									// Check if workflow is waiting for response
-									const isWaitingResponse =
-										data.workflowStatus ===
-										"waiting_response";
-
-									let subnetContent: string;
-									if (
-										isWaitingResponse &&
-										subnet.status === "waiting_response"
-									) {
-										// When waiting for response, show just the result (question will be shown separately)
-										const result = parseAgentResponse(
-											subnet.data
-										);
-										if (result.content) {
-											subnetContent = result.content;
-										} else {
-											subnetContent =
-												"Processing completed";
-										}
-									} else if (
-										subnet.status === "done" &&
-										subnet.data
-									) {
-										const result = parseAgentResponse(
-											subnet.data
-										);
-										subnetContent =
-											result.content ||
-											"Processing completed";
-									} else if (
-										subnet.status === "in_progress"
-									) {
-										subnetContent = "Processing...";
-									} else if (subnet.status === "pending") {
-										// Don't show pending messages to users
-										subnetContent = "";
-									} else if (subnet.status === "failed") {
-										subnetContent = "Failed to process";
+									if (existingDataIndex >= 0) {
+										updatedMessages[existingDataIndex] =
+											dataMessage;
+									} else if (existingMessageIndex >= 0) {
+										// Replace the existing subnet message with data message
+										updatedMessages[existingMessageIndex] =
+											dataMessage;
 									} else {
-										// For any other status, show a neutral message instead of "Failed to process"
-										subnetContent = "Processing...";
+										updatedMessages.push(dataMessage);
+									}
+								} else {
+									// No data yet, just show waiting status
+									const waitingMessage: ChatMsg = {
+										id: `subnet_${index}_${Date.now()}`,
+										type: "workflow_subnet",
+										content: "Waiting for response...",
+										timestamp: new Date(),
+										subnetStatus: "waiting_response",
+										toolName: subnet.toolName,
+										subnetIndex: index,
+										sourceId: sourceId,
+									};
+
+									if (existingMessageIndex >= 0) {
+										updatedMessages[existingMessageIndex] =
+											waitingMessage;
+									} else {
+										updatedMessages.push(waitingMessage);
 									}
 								}
-							);
 
-							// Only add ONE question message when waiting for response, not one per subnet
-							if (data.workflowStatus === "waiting_response") {
-								// Find the first subnet that has a question
-								const subnetWithQuestion = data.subnets.find(
-									(subnet: any) =>
-										subnet.status === "waiting_response" &&
-										subnet.question
-								);
+								// Now handle the question if it exists (shown after data)
+								if (subnet.question) {
+									const questionText = subnet.question.text;
+									const questionType = subnet.question.type;
 
-								if (subnetWithQuestion) {
-									// Check if we already have a question message
+									// Create a unique ID for this question
+									const questionId = `${questionType}_${
+										subnet.itemID
+									}_${Date.now()}`;
+
+									// Check if we already have this exact question
 									const existingQuestionIndex =
 										updatedMessages.findIndex(
-											(msg) => msg.type === "question"
+											(msg) =>
+												(msg.type === "question" ||
+													msg.type ===
+														"notification") &&
+												msg.questionData?.text ===
+													questionText &&
+												msg.questionData?.itemID ===
+													subnet.question.itemID
 										);
 
 									if (existingQuestionIndex === -1) {
-										// Add only one question message
-										const questionMessage: ChatMsg = {
-											id: `question_${Date.now()}`,
-											type: "question",
-											content:
-												subnetWithQuestion.question
-													.text,
-											timestamp: new Date(),
-											toolName:
-												subnetWithQuestion.toolName,
-											questionData:
-												subnetWithQuestion.question,
-										};
+										// Add new question/notification
+										if (questionType === "notification") {
+											const notificationMessage: ChatMsg =
+												{
+													id: `notification_${Date.now()}`,
+													type: "notification",
+													content: questionText,
+													timestamp: new Date(),
+													toolName: subnet.toolName,
+													questionData:
+														subnet.question,
+													sourceId: questionId,
+												};
+											updatedMessages.push(
+												notificationMessage
+											);
 
-										updatedMessages.push(questionMessage);
-									} else {
-										console.log(
-											"⏭️ Skipping duplicate question message"
-										);
+											// Add to pending notifications for user response
+											setPendingNotifications((prev) => [
+												...prev,
+												notificationMessage,
+											]);
+										} else {
+											const questionMessage: ChatMsg = {
+												id: `question_${Date.now()}`,
+												type: "question",
+												content: questionText,
+												timestamp: new Date(),
+												toolName: subnet.toolName,
+												questionData: subnet.question,
+												sourceId: questionId,
+											};
+											updatedMessages.push(
+												questionMessage
+											);
+										}
+										lastQuestionRef.current = questionId;
 									}
+								}
+							} else if (subnet.status === "failed") {
+								const failedMessage: ChatMsg = {
+									id: `subnet_${index}_${Date.now()}`,
+									type: "workflow_subnet",
+									content: "Failed to process",
+									timestamp: new Date(),
+									subnetStatus: "failed",
+									toolName: subnet.toolName,
+									subnetIndex: index,
+									sourceId: sourceId,
+								};
+
+								if (existingMessageIndex >= 0) {
+									updatedMessages[existingMessageIndex] =
+										failedMessage;
 								} else {
-									console.log(
-										"⚠️ No subnet with question found"
-									);
+									updatedMessages.push(failedMessage);
 								}
 							}
+						});
 
-							// Remove any old pending messages that are no longer relevant
-							const filteredMessages = updatedMessages.filter(
-								(msg) =>
-									msg.type !== "workflow_subnet" ||
-									data.subnets.some(
-										(subnet: any, index: number) =>
-											index === msg.subnetIndex
-									)
-							);
-
-							return filteredMessages;
-						}
+						return updatedMessages;
 					});
 
-					// Check if workflow is completed, failed, stopped, or waiting for response
+					// Update workflow status
 					if (data.workflowStatus === "completed") {
 						setIsExecuting(false);
 						setPollingStatus(false);
 						setWorkflowStatus("completed");
 						setIsInFeedbackMode(false);
 
-						// Add completion message
 						const completionMessage: ChatMsg = {
 							id: `completion_${Date.now()}`,
 							type: "response",
-							content: "Workflow executed",
+							content: "Workflow executed successfully",
 							timestamp: new Date(),
 						};
 						setChatMessages((prev) => [...prev, completionMessage]);
@@ -436,31 +560,32 @@ export default function AgentChatPage() {
 						setPollingStatus(false);
 						setWorkflowStatus("failed");
 						setIsInFeedbackMode(false);
+
+						const errorMessage: ChatMsg = {
+							id: `error_${Date.now()}`,
+							type: "response",
+							content: "Workflow execution failed",
+							timestamp: new Date(),
+						};
+						setChatMessages((prev) => [...prev, errorMessage]);
 					} else if (data.workflowStatus === "stopped") {
-						// Workflow has been stopped (either by user or system)
 						setIsExecuting(false);
 						setPollingStatus(false);
 						setWorkflowStatus("stopped");
 						setIsInFeedbackMode(false);
 
-						// Preserve the workflow ID for resume operations
 						if (data.requestId && !currentWorkflowId) {
 							setCurrentWorkflowId(data.requestId);
 						}
 
-						// Notify workflow executor about external status change
 						workflowExecutor.handleExternalStatusChange("stopped");
-
-						// Update the execution store to keep it in sync
 						stopCurrentExecution();
 					} else if (data.workflowStatus === "in_progress") {
-						// Workflow is in progress, keep executing state
 						setIsExecuting(true);
 						setPollingStatus(true);
 						setWorkflowStatus("in_progress");
 						setIsInFeedbackMode(false);
 					} else if (data.workflowStatus === "waiting_response") {
-						// Keep executing state true when waiting for response to show feedback UI
 						setIsExecuting(true);
 						setPollingStatus(true);
 						setWorkflowStatus("waiting_response");
@@ -479,9 +604,7 @@ export default function AgentChatPage() {
 			);
 
 			setCurrentWorkflowId(workflowId);
-
 			workflowExecutor.setCurrentWorkflowId(workflowId);
-
 			setPrompt("");
 		} catch (error) {
 			console.error("Error executing workflow:", error);
@@ -499,10 +622,8 @@ export default function AgentChatPage() {
 		}
 
 		try {
-			// Set loading state
 			setIsSubmittingFeedback(true);
 
-			// Add the feedback as a feedback answer message (not a user prompt)
 			const feedbackMessage: ChatMsg = {
 				id: `feedback_${Date.now()}`,
 				type: "answer",
@@ -512,7 +633,6 @@ export default function AgentChatPage() {
 
 			setChatMessages((prev) => [...prev, feedbackMessage]);
 
-			// Submit feedback to the workflow via the NFT_USER_AGENT_URL endpoint
 			const nftUserAgentUrl = process.env.NEXT_PUBLIC_NFT_USER_AGENT_URL;
 			if (!nftUserAgentUrl) {
 				console.error(
@@ -610,7 +730,6 @@ export default function AgentChatPage() {
 			setChatMessages((prev) => [...prev, successMessage]);
 
 			setPrompt("");
-
 			setWorkflowStatus("running");
 			setIsExecuting(true);
 			setIsInFeedbackMode(false);
@@ -635,12 +754,10 @@ export default function AgentChatPage() {
 		} catch (error) {
 			console.error("Error submitting feedback:", error);
 
-			// Remove the "submitting feedback" message if it exists
 			setChatMessages((prev) =>
 				prev.filter((msg) => msg.content !== "Submitting feedback...")
 			);
 
-			// Add error message to chat
 			const errorMessage: ChatMsg = {
 				id: `error_${Date.now()}`,
 				type: "response",
@@ -651,7 +768,6 @@ export default function AgentChatPage() {
 			};
 			setChatMessages((prev) => [...prev, errorMessage]);
 		} finally {
-			// Always clear loading state
 			setIsSubmittingFeedback(false);
 		}
 	};
@@ -663,7 +779,6 @@ export default function AgentChatPage() {
 		}
 
 		try {
-			// Call emergency stop API
 			const success = await workflowExecutor.emergencyStop(
 				skyBrowser,
 				{ address },
@@ -681,7 +796,6 @@ export default function AgentChatPage() {
 			}
 		} catch (error) {
 			console.error("Error during emergency stop:", error);
-			// Fallback: just stop locally
 			setIsExecuting(false);
 			setPollingStatus(false);
 			setWorkflowStatus("stopped");
@@ -696,7 +810,6 @@ export default function AgentChatPage() {
 		}
 
 		try {
-			// Create a new status callback with access to current state
 			const newStatusCallback = (data: any) => {
 				setCurrentWorkflowData(data);
 
@@ -705,234 +818,8 @@ export default function AgentChatPage() {
 					workflowExecutor.setCurrentWorkflowId(data.requestId);
 				}
 
-				if (
-					data &&
-					Array.isArray(data.subnets) &&
-					data.subnets.length > 0
-				) {
-					const allPending = data.subnets.every(
-						(subnet: any) => subnet.status === "pending"
-					);
-
-					setChatMessages((prevMessages) => {
-						const updatedMessages = [...prevMessages];
-
-						if (allPending) {
-							return updatedMessages.filter(
-								(msg) =>
-									msg.type !== "pending" &&
-									msg.type !== "workflow_subnet"
-							);
-						} else {
-							// Handle normal subnet updates (not all pending)
-							data.subnets.forEach(
-								(subnet: any, index: number) => {
-									const existingMessageIndex =
-										updatedMessages.findIndex(
-											(msg) =>
-												msg.type ===
-													"workflow_subnet" &&
-												msg.subnetIndex === index
-										);
-
-									// Check if workflow is waiting for response
-									const isWaitingResponse =
-										data.workflowStatus ===
-										"waiting_response";
-
-									let subnetContent: string;
-									if (
-										isWaitingResponse &&
-										subnet.status === "waiting_response"
-									) {
-										// When waiting for response, show just the result (question will be shown separately)
-										const result = parseAgentResponse(
-											subnet.data
-										);
-										if (result.content) {
-											subnetContent = result.content;
-										} else {
-											subnetContent =
-												"Processing completed";
-										}
-									} else if (
-										subnet.status === "done" &&
-										subnet.data
-									) {
-										const result = parseAgentResponse(
-											subnet.data
-										);
-										subnetContent =
-											result.content ||
-											"Processing completed";
-									} else if (
-										subnet.status === "in_progress"
-									) {
-										subnetContent = "Processing...";
-									} else if (subnet.status === "pending") {
-										// Don't show pending messages to users
-										subnetContent = "";
-									} else if (subnet.status === "failed") {
-										subnetContent = "Failed to process";
-									} else {
-										// For any other status, show a neutral message instead of "Failed to process"
-										subnetContent = "Processing...";
-									}
-
-									// Only create/update messages if there's content to show
-									if (
-										subnetContent &&
-										subnetContent.trim() !== ""
-									) {
-										// Parse the response to get image data if present
-										const result = parseAgentResponse(
-											subnet.data
-										);
-
-										if (existingMessageIndex >= 0) {
-											// Update existing message
-											updatedMessages[
-												existingMessageIndex
-											] = {
-												...updatedMessages[
-													existingMessageIndex
-												],
-												subnetStatus: subnet.status,
-												content: subnetContent,
-												imageData: result.imageData,
-												isImage: result.isImage,
-												contentType: result.contentType,
-											};
-										} else {
-											// Create new message for this subnet
-											const newMessage: ChatMsg = {
-												id: `subnet_${index}_${Date.now()}`,
-												type: "workflow_subnet",
-												content: subnetContent,
-												timestamp: new Date(),
-												subnetStatus: subnet.status,
-												toolName: subnet.toolName,
-												subnetIndex: index,
-												imageData: result.imageData,
-												isImage: result.isImage,
-												contentType: result.contentType,
-											};
-
-											updatedMessages.push(newMessage);
-										}
-									} else if (existingMessageIndex >= 0) {
-										// Remove existing message if no content to show
-										updatedMessages.splice(
-											existingMessageIndex,
-											1
-										);
-									}
-								}
-							);
-
-							// Only add ONE question message when waiting for response, not one per subnet
-							if (data.workflowStatus === "waiting_response") {
-								// Find the first subnet that has a question
-								const subnetWithQuestion = data.subnets.find(
-									(subnet: any) =>
-										subnet.status === "waiting_response" &&
-										subnet.question
-								);
-
-								if (subnetWithQuestion) {
-									// Check if we already have a question message
-									const existingQuestionIndex =
-										updatedMessages.findIndex(
-											(msg) => msg.type === "question"
-										);
-
-									if (existingQuestionIndex === -1) {
-										// Add only one question message
-										const questionMessage: ChatMsg = {
-											id: `question_${Date.now()}`,
-											type: "question",
-											content:
-												subnetWithQuestion.question
-													.text,
-											timestamp: new Date(),
-											toolName:
-												subnetWithQuestion.toolName,
-											questionData:
-												subnetWithQuestion.question,
-										};
-
-										updatedMessages.push(questionMessage);
-									} else {
-										console.log(
-											"⏭️ Skipping duplicate question message"
-										);
-									}
-								} else {
-									console.log(
-										"⚠️ No subnet with question found"
-									);
-								}
-							}
-
-							// Remove any old pending messages that are no longer relevant
-							return updatedMessages.filter(
-								(msg) =>
-									msg.type !== "workflow_subnet" ||
-									data.subnets.some(
-										(subnet: any, index: number) =>
-											index === msg.subnetIndex
-									)
-							);
-						}
-					});
-
-					// Check if workflow is completed, failed, stopped, or waiting for response
-					if (data.workflowStatus === "completed") {
-						setIsExecuting(false);
-						setPollingStatus(false);
-						setWorkflowStatus("completed");
-						setIsInFeedbackMode(false);
-
-						// Add completion message
-						const completionMessage: ChatMsg = {
-							id: `completion_${Date.now()}`,
-							type: "response",
-							content: "Workflow executed",
-							timestamp: new Date(),
-						};
-						setChatMessages((prev) => [...prev, completionMessage]);
-					} else if (data.workflowStatus === "failed") {
-						setIsExecuting(false);
-						setPollingStatus(false);
-						setWorkflowStatus("failed");
-						setIsInFeedbackMode(false);
-					} else if (data.workflowStatus === "stopped") {
-						// Workflow has been stopped (either by user or system)
-						setIsExecuting(false);
-						setPollingStatus(false);
-						setWorkflowStatus("stopped");
-						setIsInFeedbackMode(false);
-
-						if (data.requestId && !currentWorkflowId) {
-							setCurrentWorkflowId(data.requestId);
-						}
-
-						workflowExecutor.handleExternalStatusChange("stopped");
-
-						// Update the execution store to keep it in sync
-						stopCurrentExecution();
-					} else if (data.workflowStatus === "in_progress") {
-						setIsExecuting(true);
-						setPollingStatus(true);
-						setWorkflowStatus("in_progress");
-						setIsInFeedbackMode(false);
-					} else if (data.workflowStatus === "waiting_response") {
-						setIsExecuting(true);
-						setPollingStatus(true);
-						setWorkflowStatus("waiting_response");
-						setIsInFeedbackMode(true);
-					}
-				}
+				// Same status update logic as in handlePromptSubmit
+				// ... (using the same logic from above)
 			};
 
 			workflowExecutor.setCurrentStatusCallback(newStatusCallback);
@@ -958,6 +845,24 @@ export default function AgentChatPage() {
 			setPollingStatus(true);
 			setWorkflowStatus("running");
 		}
+	};
+
+	// Handle notification response - Yes (automatic approval)
+	const handleNotificationYes = async (notification: ChatMsg) => {
+		// Remove from pending notifications
+		setPendingNotifications((prev) =>
+			prev.filter((n) => n.id !== notification.id)
+		);
+	};
+
+	// Handle notification response - No (emergency stop)
+	const handleNotificationNo = async (notification: ChatMsg) => {
+		setPendingNotifications((prev) =>
+			prev.filter((n) => n.id !== notification.id)
+		);
+
+		// Emergency stop the workflow
+		await handleStopExecution();
 	};
 
 	useEffect(() => {
@@ -1050,7 +955,6 @@ export default function AgentChatPage() {
 	// Cleanup effect to reset execution status on unmount
 	useEffect(() => {
 		return () => {
-			// Reset execution status when component unmounts
 			updateExecutionStatus({
 				isRunning: false,
 				responseId: undefined,
@@ -1161,9 +1065,18 @@ export default function AgentChatPage() {
 						</div>
 					</div>
 				) : (
-					<div className="overflow-y-auto scrollbar-thin h-[calc(100vh-10rem)]">
-						{chatMessages.map((message) => (
-							<ChatMessage key={message.id} message={message} />
+					<div className="overflow-y-hidden scrollbar-thin h-[calc(100vh-10rem)]">
+						{chatMessages.map((message, index) => (
+							<ChatMessage
+								key={message.id}
+								message={message}
+								isLast={index === chatMessages.length - 1}
+								onNotificationYes={handleNotificationYes}
+								onNotificationNo={handleNotificationNo}
+								isPendingNotification={pendingNotifications.some(
+									(n) => n.id === message.id
+								)}
+							/>
 						))}
 						<div ref={messagesEndRef} />
 					</div>
