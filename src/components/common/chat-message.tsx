@@ -2,6 +2,7 @@
 
 import { base64ToDataUrl } from "@/lib/utils";
 import Image from "next/image";
+import { useState } from "react";
 import {
 	CircleIcon as CircleQuestionMark,
 	CircleAlert,
@@ -13,8 +14,10 @@ import {
 	LucideCircleQuestionMark,
 	DownloadIcon,
 	AlertCircle,
+	MessageSquare,
 } from "lucide-react";
 import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 
 interface ChatMessageProps {
 	message: {
@@ -50,11 +53,22 @@ interface ChatMessageProps {
 			expiresAt: string;
 		};
 		sourceId?: string;
+		// Feedback specific fields
+		question?: string;
+		answer?: string;
 	};
 	isLast?: boolean;
 	onNotificationYes?: (notification: any) => Promise<void>;
 	onNotificationNo?: (notification: any) => Promise<void>;
 	isPendingNotification?: boolean;
+	// Feedback handlers
+	onFeedbackProceed?: (question: string, answer: string) => Promise<void>;
+	onFeedbackSubmit?: (
+		question: string,
+		answer: string,
+		feedback: string
+	) => Promise<void>;
+	showFeedbackButtons?: boolean;
 }
 
 export function ChatMessage({
@@ -63,7 +77,13 @@ export function ChatMessage({
 	onNotificationYes,
 	onNotificationNo,
 	isPendingNotification = false,
+	onFeedbackProceed,
+	onFeedbackSubmit,
+	showFeedbackButtons = false,
 }: ChatMessageProps) {
+	const [showFeedbackInput, setShowFeedbackInput] = useState(false);
+	const [feedbackText, setFeedbackText] = useState("");
+
 	// User message - the initial prompt
 	if (message.type === "user") {
 		return (
@@ -305,7 +325,7 @@ export function ChatMessage({
 							<div className="text-foreground text-sm leading-relaxed overflow-hidden">
 								{message.questionData?.text || message.content}
 							</div>
-							{isAuthentication && (
+							{isAuthentication ? (
 								<div className="mt-3 space-y-2">
 									{message.questionData?.expiresAt && (
 										<p className="text-xs text-gray-400 mt-2">
@@ -346,7 +366,103 @@ export function ChatMessage({
 										Authenticate
 									</Button>
 								</div>
-							)}
+							) : showFeedbackButtons ? (
+								<div className="mt-4 space-y-3">
+									{!showFeedbackInput ? (
+										<div className="flex gap-3">
+											<Button
+												onClick={async () => {
+													if (
+														onFeedbackProceed &&
+														message.questionData
+															?.text
+													) {
+														await onFeedbackProceed(
+															message.questionData
+																.text,
+															"Proceed with current result"
+														);
+													}
+												}}
+												variant="outline"
+												size="sm"
+												className="flex items-center gap-2 text-green-500 hover:text-green-400 bg-green-950/60 hover:bg-green-950/70 border border-green-800/50 hover:border-green-800/70"
+											>
+												<Check className="w-4 h-4" />
+												Yes, proceed
+											</Button>
+											<Button
+												onClick={() =>
+													setShowFeedbackInput(true)
+												}
+												variant="outline"
+												size="sm"
+												className="flex items-center gap-2 text-blue-500 hover:text-blue-400 bg-blue-950/60 hover:bg-blue-950/70 border border-blue-800/50 hover:border-blue-800/70"
+											>
+												<MessageSquare className="w-4 h-4" />
+												Provide feedback
+											</Button>
+										</div>
+									) : (
+										<div className="space-y-3">
+											<div className="flex gap-2">
+												<Input
+													value={feedbackText}
+													onChange={(e) =>
+														setFeedbackText(
+															e.target.value
+														)
+													}
+													placeholder="Type your feedback here..."
+													className="flex-1"
+												/>
+												<Button
+													onClick={async () => {
+														if (
+															onFeedbackSubmit &&
+															message.questionData
+																?.text &&
+															feedbackText.trim()
+														) {
+															await onFeedbackSubmit(
+																message
+																	.questionData
+																	.text,
+																"User feedback",
+																feedbackText.trim()
+															);
+															setFeedbackText("");
+															setShowFeedbackInput(
+																false
+															);
+														}
+													}}
+													variant="outline"
+													size="sm"
+													className="flex items-center gap-2 text-blue-500 hover:text-blue-400 bg-blue-950/60 hover:bg-blue-950/70 border border-blue-800/50 hover:border-blue-800/70"
+													disabled={
+														!feedbackText.trim()
+													}
+												>
+													<MessageSquare className="w-4 h-4" />
+													Submit
+												</Button>
+											</div>
+											<Button
+												onClick={() => {
+													setShowFeedbackInput(false);
+													setFeedbackText("");
+												}}
+												variant="outline"
+												size="sm"
+												className="text-gray-400 hover:text-gray-300 bg-gray-950/60 hover:bg-gray-950/70 border border-gray-800/50 hover:border-gray-800/70"
+											>
+												Cancel
+											</Button>
+										</div>
+									)}
+								</div>
+							) : null}
 						</div>
 						{message.toolName && (
 							<div className="text-xs mt-2 italic text-gray-400">

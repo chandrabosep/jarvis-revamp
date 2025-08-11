@@ -48,6 +48,13 @@ type ChatMsg = {
 	};
 	// Track the source for deduplication
 	sourceId?: string;
+	// Track if this is a regenerated content after feedback
+	isRegenerated?: boolean;
+	// Store the previous content hash for comparison
+	contentHash?: string;
+	// Feedback specific fields
+	question?: string;
+	answer?: string;
 };
 
 export default function AgentChatPage() {
@@ -97,6 +104,21 @@ export default function AgentChatPage() {
 	// Use the workflow executor hook
 	const { executeAgentWorkflow } = useWorkflowExecutor();
 
+	// Track content before feedback for comparison
+	const [preFeedbackContent, setPreFeedbackContent] = useState<
+		Map<number, string>
+	>(new Map());
+	const [feedbackGivenForSubnet, setFeedbackGivenForSubnet] = useState<
+		Set<number>
+	>(new Set());
+	const [subnetPreviousStatus, setSubnetPreviousStatus] = useState<
+		Map<number, string>
+	>(new Map());
+	const [hasFeedbackBeenGiven, setHasFeedbackBeenGiven] = useState(false);
+	const [postFeedbackProcessing, setPostFeedbackProcessing] = useState<
+		Map<number, boolean>
+	>(new Map());
+
 	const lastLoadedAgentId = useRef<string | null>(null);
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 	const hasAutoSubmittedRef = useRef(false);
@@ -109,6 +131,17 @@ export default function AgentChatPage() {
 		} else {
 			setMode(newMode);
 		}
+	};
+
+	// Helper function to create content hash for comparison
+	const createContentHash = (data: any): string => {
+		if (!data) return "";
+		const content = JSON.stringify({
+			content: data.content,
+			imageData: data.imageData,
+			contentType: data.contentType,
+		});
+		return content;
 	};
 
 	// Helper: Parse agent response from workflow result
@@ -266,6 +299,9 @@ export default function AgentChatPage() {
 			setPollingStatus(true);
 			setWorkflowStatus("running");
 			setIsInFeedbackMode(false);
+			setFeedbackGivenForSubnet(new Set());
+			setPostFeedbackProcessing(new Map());
+			setPreFeedbackContent(new Map());
 
 			setChatMessages([]);
 			setCurrentWorkflowData(null);
@@ -293,6 +329,47 @@ export default function AgentChatPage() {
 					Array.isArray(data.subnets) &&
 					data.subnets.length > 0
 				) {
+					// Track status transitions outside of setChatMessages to avoid stale closures
+					const statusTransitions: Map<
+						number,
+						{
+							prev: string | undefined;
+							current: string;
+							isRegenerating: boolean;
+						}
+					> = new Map();
+
+					data.subnets.forEach((subnet: any, index: number) => {
+						const prevStatus = subnetPreviousStatus.get(index);
+						const isRegenerating =
+							prevStatus === "waiting_response" &&
+							subnet.status === "in_progress";
+
+						statusTransitions.set(index, {
+							prev: prevStatus,
+							current: subnet.status,
+							isRegenerating,
+						});
+
+						// Update tracking states
+						if (isRegenerating) {
+							console.log(
+								`Subnet ${index} transitioning from waiting_response to in_progress - will regenerate`
+							);
+							setPostFeedbackProcessing((prev) =>
+								new Map(prev).set(index, true)
+							);
+							setFeedbackGivenForSubnet((prev) =>
+								new Set(prev).add(index)
+							);
+						}
+
+						// Update previous status for next iteration
+						setSubnetPreviousStatus((prev) =>
+							new Map(prev).set(index, subnet.status)
+						);
+					});
+
 					// Update chat messages using functional state update to avoid stale closures
 					setChatMessages((prevMessages) => {
 						let updatedMessages = [...prevMessages];
@@ -300,13 +377,17 @@ export default function AgentChatPage() {
 						// Process each subnet
 						data.subnets.forEach((subnet: any, index: number) => {
 							const sourceId = `subnet_${index}_${subnet.status}`;
+							const transition = statusTransitions.get(index);
+							const isRegenerating =
+								transition?.isRegenerating || false;
 
 							// Find existing message for this subnet
 							let existingMessageIndex =
 								updatedMessages.findIndex(
 									(msg) =>
 										msg.type === "workflow_subnet" &&
-										msg.subnetIndex === index
+										msg.subnetIndex === index &&
+										!msg.isRegenerated // Don't update regenerated messages
 								);
 
 							// Handle different statuses
@@ -319,53 +400,209 @@ export default function AgentChatPage() {
 									);
 								}
 							} else if (subnet.status === "in_progress") {
-								// Show in-progress status
-								const progressMessage: ChatMsg = {
-									id: `subnet_${index}_${Date.now()}`,
-									type: "workflow_subnet",
-									content: "Processing...",
-									timestamp: new Date(),
-									subnetStatus: "in_progress",
-									toolName: subnet.toolName,
-									subnetIndex: index,
-									sourceId: sourceId,
-								};
+								// Check if this is processing after feedback (detected by transition)
+								const isProcessingAfterFeedback =
+									isRegenerating ||
+									postFeedbackProcessing.get(index) ||
+									false;
 
-								if (existingMessageIndex >= 0) {
-									updatedMessages[existingMessageIndex] =
-										progressMessage;
+								if (isProcessingAfterFeedback) {
+									console.log(
+										`Showing processing after feedback for subnet ${index}`
+									);
+									// Processing after feedback - hide the original and show processing message
+									// Remove ALL previous messages for this subnet (including data messages)
+									updatedMessages = updatedMessages.filter(
+										(msg) =>
+											!(
+												msg.type ===
+													"workflow_subnet" &&
+												msg.subnetIndex === index &&
+												!msg.isRegenerated
+											)
+									);
+
+									// Add processing message at the bottom
+									const processingMessage: ChatMsg = {
+										id: `subnet_${index}_processing_after_feedback_${Date.now()}`,
+										type: "workflow_subnet",
+										content: "Processing...",
+										timestamp: new Date(),
+										subnetStatus: "in_progress",
+										toolName: subnet.toolName,
+										subnetIndex: index,
+										sourceId: `${sourceId}_processing_after_feedback`,
+										isRegenerated: true, // Mark as regenerated so it appears at bottom
+									};
+
+									updatedMessages.push(processingMessage);
 								} else {
-									updatedMessages.push(progressMessage);
+									// Initial processing - show in-progress status
+									const progressMessage: ChatMsg = {
+										id: `subnet_${index}_${Date.now()}`,
+										type: "workflow_subnet",
+										content: "Processing...",
+										timestamp: new Date(),
+										subnetStatus: "in_progress",
+										toolName: subnet.toolName,
+										subnetIndex: index,
+										sourceId: sourceId,
+									};
+
+									if (existingMessageIndex >= 0) {
+										updatedMessages[existingMessageIndex] =
+											progressMessage;
+									} else {
+										updatedMessages.push(progressMessage);
+									}
 								}
 							} else if (
 								subnet.status === "done" &&
 								subnet.data
 							) {
-								// Show completed result
+								// Parse the result
 								const result = parseAgentResponse(subnet.data);
-								const doneMessage: ChatMsg = {
-									id: `subnet_${index}_${Date.now()}`,
-									type: "workflow_subnet",
-									content:
-										result.content ||
-										"Processing completed",
-									timestamp: new Date(),
-									subnetStatus: "done",
-									toolName: subnet.toolName,
-									subnetIndex: index,
-									imageData: result.imageData,
-									isImage: result.isImage,
-									contentType: result.contentType,
-									sourceId: sourceId,
-								};
+								const currentHash = createContentHash(result);
 
-								if (existingMessageIndex >= 0) {
-									updatedMessages[existingMessageIndex] =
-										doneMessage;
+								// Check if this subnet had feedback and is processing after feedback
+								const previousHash =
+									preFeedbackContent.get(index);
+								const hadFeedback =
+									feedbackGivenForSubnet.has(index);
+								const wasProcessingAfterFeedback =
+									postFeedbackProcessing.get(index) || false;
+
+								// Determine if content changed (compare hashes)
+								const isContentChanged =
+									hadFeedback &&
+									previousHash &&
+									previousHash !== currentHash;
+
+								if (hadFeedback && wasProcessingAfterFeedback) {
+									// This is completion after feedback with regeneration
+									// Remove any existing processing message for this subnet
+									const processingIndex =
+										updatedMessages.findIndex(
+											(msg) =>
+												msg.type ===
+													"workflow_subnet" &&
+												msg.subnetIndex === index &&
+												msg.subnetStatus ===
+													"in_progress" &&
+												msg.isRegenerated
+										);
+
+									if (processingIndex >= 0) {
+										// Replace processing message with the result
+										const regeneratedMessage: ChatMsg = {
+											id: `subnet_${index}_regenerated_${Date.now()}`,
+											type: "workflow_subnet",
+											content:
+												result.content ||
+												"Processing completed",
+											timestamp: new Date(),
+											subnetStatus: "done",
+											toolName: subnet.toolName,
+											subnetIndex: index,
+											imageData: result.imageData,
+											isImage: result.isImage,
+											contentType: result.contentType,
+											sourceId: `${sourceId}_regenerated`,
+											isRegenerated: true,
+											contentHash: currentHash,
+										};
+
+										updatedMessages[processingIndex] =
+											regeneratedMessage;
+									} else {
+										// Add new regenerated message at bottom
+										const regeneratedMessage: ChatMsg = {
+											id: `subnet_${index}_regenerated_${Date.now()}`,
+											type: "workflow_subnet",
+											content:
+												result.content ||
+												"Processing completed",
+											timestamp: new Date(),
+											subnetStatus: "done",
+											toolName: subnet.toolName,
+											subnetIndex: index,
+											imageData: result.imageData,
+											isImage: result.isImage,
+											contentType: result.contentType,
+											sourceId: `${sourceId}_regenerated`,
+											isRegenerated: true,
+											contentHash: currentHash,
+										};
+
+										updatedMessages.push(
+											regeneratedMessage
+										);
+									}
+
+									// Clear the feedback tracking for this subnet
+									setFeedbackGivenForSubnet((prev) => {
+										const newSet = new Set(prev);
+										newSet.delete(index);
+										return newSet;
+									});
+									setPostFeedbackProcessing((prev) => {
+										const newMap = new Map(prev);
+										newMap.delete(index);
+										return newMap;
+									});
+								} else if (!hadFeedback) {
+									// First generation (no feedback yet) - update existing or add new
+									const doneMessage: ChatMsg = {
+										id: `subnet_${index}_${Date.now()}`,
+										type: "workflow_subnet",
+										content:
+											result.content ||
+											"Processing completed",
+										timestamp: new Date(),
+										subnetStatus: "done",
+										toolName: subnet.toolName,
+										subnetIndex: index,
+										imageData: result.imageData,
+										isImage: result.isImage,
+										contentType: result.contentType,
+										sourceId: sourceId,
+										contentHash: currentHash,
+									};
+
+									if (existingMessageIndex >= 0) {
+										updatedMessages[existingMessageIndex] =
+											doneMessage;
+									} else {
+										updatedMessages.push(doneMessage);
+									}
 								} else {
-									updatedMessages.push(doneMessage);
+									// Had feedback but content didn't change - keep original at top
+									// Don't add a new message, original stays in place
+									// Clear the feedback tracking since we're done
+									setFeedbackGivenForSubnet((prev) => {
+										const newSet = new Set(prev);
+										newSet.delete(index);
+										return newSet;
+									});
+									setPostFeedbackProcessing((prev) => {
+										const newMap = new Map(prev);
+										newMap.delete(index);
+										return newMap;
+									});
 								}
 							} else if (subnet.status === "waiting_response") {
+								// Store current content before feedback for this specific subnet
+								if (subnet.data) {
+									const result = parseAgentResponse(
+										subnet.data
+									);
+									const contentHash =
+										createContentHash(result);
+									setPreFeedbackContent((prev) =>
+										new Map(prev).set(index, contentHash)
+									);
+								}
+
 								// First, handle the data if it exists
 								if (subnet.data) {
 									const result = parseAgentResponse(
@@ -411,6 +648,7 @@ export default function AgentChatPage() {
 										isImage: result.isImage,
 										contentType: result.contentType,
 										sourceId: `${sourceId}_data`,
+										contentHash: createContentHash(result),
 									};
 
 									// Find if we already have a data message for this subnet
@@ -420,7 +658,10 @@ export default function AgentChatPage() {
 												msg.type ===
 													"workflow_subnet" &&
 												msg.subnetIndex === index &&
-												msg.sourceId?.includes("_data")
+												msg.sourceId?.includes(
+													"_data"
+												) &&
+												!msg.isRegenerated
 										);
 
 									if (existingDataIndex >= 0) {
@@ -509,6 +750,8 @@ export default function AgentChatPage() {
 												toolName: subnet.toolName,
 												questionData: subnet.question,
 												sourceId: questionId,
+												question: questionText,
+												answer: "Waiting for user response",
 											};
 											updatedMessages.push(
 												questionMessage
@@ -547,6 +790,9 @@ export default function AgentChatPage() {
 						setPollingStatus(false);
 						setWorkflowStatus("completed");
 						setIsInFeedbackMode(false);
+						// Clear all feedback tracking when workflow completes
+						setFeedbackGivenForSubnet(new Set());
+						setPostFeedbackProcessing(new Map() as any);
 
 						const completionMessage: ChatMsg = {
 							id: `completion_${Date.now()}`,
@@ -560,6 +806,9 @@ export default function AgentChatPage() {
 						setPollingStatus(false);
 						setWorkflowStatus("failed");
 						setIsInFeedbackMode(false);
+						// Clear all feedback tracking when workflow fails
+						setFeedbackGivenForSubnet(new Set());
+						setPostFeedbackProcessing(new Map() as any);
 
 						const errorMessage: ChatMsg = {
 							id: `error_${Date.now()}`,
@@ -573,6 +822,9 @@ export default function AgentChatPage() {
 						setPollingStatus(false);
 						setWorkflowStatus("stopped");
 						setIsInFeedbackMode(false);
+						// Clear all feedback tracking when workflow stops
+						setFeedbackGivenForSubnet(new Set());
+						setPostFeedbackProcessing(new Map() as any);
 
 						if (data.requestId && !currentWorkflowId) {
 							setCurrentWorkflowId(data.requestId);
@@ -614,7 +866,323 @@ export default function AgentChatPage() {
 		}
 	};
 
-	// Handle feedback response submission
+	// Handle feedback submission for questions
+	const handleFeedbackSubmit = async (
+		question: string,
+		answer: string,
+		feedback: string
+	) => {
+		if (!currentWorkflowId || !skyBrowser || !address) {
+			console.error("Missing required data for feedback submission");
+			return;
+		}
+
+		try {
+			setIsSubmittingFeedback(true);
+
+			// Find which subnet is waiting for response
+			const waitingSubnetIndex = currentWorkflowData?.subnets?.findIndex(
+				(subnet: any) =>
+					subnet.status === "waiting_response" && subnet.question
+			);
+
+			if (waitingSubnetIndex !== undefined && waitingSubnetIndex >= 0) {
+				// Mark that feedback was given for this specific subnet
+				setFeedbackGivenForSubnet((prev) =>
+					new Set(prev).add(waitingSubnetIndex)
+				);
+				// Mark this subnet as potentially regenerating
+				setPostFeedbackProcessing((prev) =>
+					new Map(prev).set(waitingSubnetIndex, true)
+				);
+			}
+
+			const feedbackMessage: ChatMsg = {
+				id: `feedback_${Date.now()}`,
+				type: "answer",
+				content: feedback,
+				timestamp: new Date(),
+			};
+
+			setChatMessages((prev) => [...prev, feedbackMessage]);
+
+			const nftUserAgentUrl = process.env.NEXT_PUBLIC_NFT_USER_AGENT_URL;
+			if (!nftUserAgentUrl) {
+				console.error(
+					"❌ NEXT_PUBLIC_NFT_USER_AGENT_URL environment variable is not configured"
+				);
+				const errorMessage: ChatMsg = {
+					id: `error_${Date.now()}`,
+					type: "response",
+					content:
+						"Error: Feedback submission endpoint not configured",
+					timestamp: new Date(),
+				};
+				setChatMessages((prev) => [...prev, errorMessage]);
+				return;
+			}
+
+			const apiKey = await apiKeyManager.getApiKey(skyBrowser, {
+				address,
+			});
+			if (!apiKey) {
+				console.error(
+					"❌ Failed to get API key for feedback submission"
+				);
+				const errorMessage: ChatMsg = {
+					id: `error_${Date.now()}`,
+					type: "response",
+					content:
+						"Error: Failed to authenticate feedback submission",
+					timestamp: new Date(),
+				};
+				setChatMessages((prev) => [...prev, errorMessage]);
+				return;
+			}
+
+			const contextPayload = {
+				workflowId: currentWorkflowId,
+				answer: feedback,
+				question: question,
+			};
+
+			const submittingMessage: ChatMsg = {
+				id: `submitting_${Date.now()}`,
+				type: "response",
+				content: "Submitting feedback...",
+				timestamp: new Date(),
+			};
+			setChatMessages((prev) => [...prev, submittingMessage]);
+
+			const response = await fetch(`${nftUserAgentUrl}/natural-request`, {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					"x-api-key": apiKey,
+				},
+				body: JSON.stringify(contextPayload),
+			});
+
+			if (!response.ok) {
+				throw new Error(
+					`Failed to submit feedback: ${response.status} ${response.statusText}`
+				);
+			}
+
+			const result = await response.json();
+
+			setChatMessages((prev) =>
+				prev.filter((msg) => msg.id !== submittingMessage.id)
+			);
+
+			const successMessage: ChatMsg = {
+				id: `success_${Date.now()}`,
+				type: "response",
+				content: "Feedback submitted successfully",
+				timestamp: new Date(),
+			};
+			setChatMessages((prev) => [...prev, successMessage]);
+
+			setPrompt("");
+			setWorkflowStatus("running");
+			setIsExecuting(true);
+			setIsInFeedbackMode(false);
+
+			if (currentWorkflowData) {
+				setCurrentWorkflowData({
+					...currentWorkflowData,
+					workflowStatus: "running",
+				});
+			}
+
+			if (workflowExecutor.getCurrentWorkflowId() === currentWorkflowId) {
+				console.log(
+					"✅ Workflow executor is still active and polling for workflow:",
+					currentWorkflowId
+				);
+			} else {
+				console.warn(
+					"⚠️ Workflow executor is not polling for the current workflow. This might indicate an issue."
+				);
+			}
+		} catch (error) {
+			console.error("Error submitting feedback:", error);
+
+			setChatMessages((prev) =>
+				prev.filter((msg) => msg.content !== "Submitting feedback...")
+			);
+
+			const errorMessage: ChatMsg = {
+				id: `error_${Date.now()}`,
+				type: "response",
+				content: `Error submitting feedback: ${
+					error instanceof Error ? error.message : "Unknown error"
+				}`,
+				timestamp: new Date(),
+			};
+			setChatMessages((prev) => [...prev, errorMessage]);
+		} finally {
+			setIsSubmittingFeedback(false);
+		}
+	};
+
+	// Handle feedback proceed (user clicks "Yes, proceed")
+	const handleFeedbackProceed = async (question: string, answer: string) => {
+		if (!currentWorkflowId || !skyBrowser || !address) {
+			console.error("Missing required data for feedback proceed");
+			return;
+		}
+
+		try {
+			setIsSubmittingFeedback(true);
+
+			// Find which subnet is waiting for response
+			const waitingSubnetIndex = currentWorkflowData?.subnets?.findIndex(
+				(subnet: any) =>
+					subnet.status === "waiting_response" && subnet.question
+			);
+
+			if (waitingSubnetIndex !== undefined && waitingSubnetIndex >= 0) {
+				// Mark that feedback was given for this specific subnet
+				setFeedbackGivenForSubnet((prev) =>
+					new Set(prev).add(waitingSubnetIndex)
+				);
+				// Mark this subnet as potentially regenerating
+				setPostFeedbackProcessing((prev) =>
+					new Map(prev).set(waitingSubnetIndex, true)
+				);
+			}
+
+			const proceedMessage: ChatMsg = {
+				id: `proceed_${Date.now()}`,
+				type: "answer",
+				content: "Proceeding with current result",
+				timestamp: new Date(),
+			};
+
+			setChatMessages((prev) => [...prev, proceedMessage]);
+
+			const nftUserAgentUrl = process.env.NEXT_PUBLIC_NFT_USER_AGENT_URL;
+			if (!nftUserAgentUrl) {
+				console.error(
+					"❌ NEXT_PUBLIC_NFT_USER_AGENT_URL environment variable is not configured"
+				);
+				const errorMessage: ChatMsg = {
+					id: `error_${Date.now()}`,
+					type: "response",
+					content:
+						"Error: Feedback submission endpoint not configured",
+					timestamp: new Date(),
+				};
+				setChatMessages((prev) => [...prev, errorMessage]);
+				return;
+			}
+
+			const apiKey = await apiKeyManager.getApiKey(skyBrowser, {
+				address,
+			});
+			if (!apiKey) {
+				console.error(
+					"❌ Failed to get API key for feedback submission"
+				);
+				const errorMessage: ChatMsg = {
+					id: `error_${Date.now()}`,
+					type: "response",
+					content:
+						"Error: Failed to authenticate feedback submission",
+					timestamp: new Date(),
+				};
+				setChatMessages((prev) => [...prev, errorMessage]);
+				return;
+			}
+
+			const contextPayload = {
+				workflowId: currentWorkflowId,
+				answer: "Proceed with current result",
+				question: question,
+			};
+
+			const submittingMessage: ChatMsg = {
+				id: `submitting_${Date.now()}`,
+				type: "response",
+				content: "Processing feedback...",
+				timestamp: new Date(),
+			};
+			setChatMessages((prev) => [...prev, submittingMessage]);
+
+			const response = await fetch(`${nftUserAgentUrl}/natural-request`, {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					"x-api-key": apiKey,
+				},
+				body: JSON.stringify(contextPayload),
+			});
+
+			if (!response.ok) {
+				throw new Error(
+					`Failed to submit feedback: ${response.status} ${response.statusText}`
+				);
+			}
+
+			const result = await response.json();
+
+			setChatMessages((prev) =>
+				prev.filter((msg) => msg.id !== submittingMessage.id)
+			);
+
+			const successMessage: ChatMsg = {
+				id: `success_${Date.now()}`,
+				type: "response",
+				content: "Feedback processed successfully",
+				timestamp: new Date(),
+			};
+			setChatMessages((prev) => [...prev, successMessage]);
+
+			setPrompt("");
+			setWorkflowStatus("running");
+			setIsExecuting(true);
+			setIsInFeedbackMode(false);
+
+			if (currentWorkflowData) {
+				setCurrentWorkflowData({
+					...currentWorkflowData,
+					workflowStatus: "running",
+				});
+			}
+
+			if (workflowExecutor.getCurrentWorkflowId() === currentWorkflowId) {
+				console.log(
+					"✅ Workflow executor is still active and polling for workflow:",
+					currentWorkflowId
+				);
+			} else {
+				console.warn(
+					"⚠️ Workflow executor is not polling for the current workflow. This might indicate an issue."
+				);
+			}
+		} catch (error) {
+			console.error("Error processing feedback:", error);
+
+			setChatMessages((prev) =>
+				prev.filter((msg) => msg.content !== "Processing feedback...")
+			);
+
+			const errorMessage: ChatMsg = {
+				id: `error_${Date.now()}`,
+				type: "response",
+				content: `Error processing feedback: ${
+					error instanceof Error ? error.message : "Unknown error"
+				}`,
+				timestamp: new Date(),
+			};
+			setChatMessages((prev) => [...prev, errorMessage]);
+		} finally {
+			setIsSubmittingFeedback(false);
+		}
+	};
+
+	// Handle feedback response submission (legacy function for backward compatibility)
 	const handleFeedbackResponse = async (feedback: string) => {
 		if (!currentWorkflowId || !skyBrowser || !address) {
 			console.error("Missing required data for feedback submission");
@@ -623,6 +1191,23 @@ export default function AgentChatPage() {
 
 		try {
 			setIsSubmittingFeedback(true);
+
+			// Find which subnet is waiting for response
+			const waitingSubnetIndex = currentWorkflowData?.subnets?.findIndex(
+				(subnet: any) =>
+					subnet.status === "waiting_response" && subnet.question
+			);
+
+			if (waitingSubnetIndex !== undefined && waitingSubnetIndex >= 0) {
+				// Mark that feedback was given for this specific subnet
+				setFeedbackGivenForSubnet((prev) =>
+					new Set(prev).add(waitingSubnetIndex)
+				);
+				// Mark this subnet as potentially regenerating
+				setPostFeedbackProcessing((prev) =>
+					new Map(prev).set(waitingSubnetIndex, true)
+				);
+			}
 
 			const feedbackMessage: ChatMsg = {
 				id: `feedback_${Date.now()}`,
@@ -1076,6 +1661,13 @@ export default function AgentChatPage() {
 								isPendingNotification={pendingNotifications.some(
 									(n) => n.id === message.id
 								)}
+								onFeedbackSubmit={handleFeedbackSubmit}
+								onFeedbackProceed={handleFeedbackProceed}
+								showFeedbackButtons={
+									message.type === "question" &&
+									message.questionData?.type !==
+										"authentication"
+								}
 							/>
 						))}
 						<div ref={messagesEndRef} />
