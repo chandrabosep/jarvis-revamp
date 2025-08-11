@@ -35,21 +35,6 @@ type ChatMsg = {
 };
 
 export default function AgentChatPage() {
-	// Check if required environment variables are configured
-	useEffect(() => {
-		const nftUserAgentUrl = process.env.NEXT_PUBLIC_NFT_USER_AGENT_URL;
-		if (!nftUserAgentUrl) {
-			console.error(
-				"❌ NEXT_PUBLIC_NFT_USER_AGENT_URL environment variable is not configured"
-			);
-		} else {
-			console.log(
-				"✅ NEXT_PUBLIC_NFT_USER_AGENT_URL configured:",
-				nftUserAgentUrl
-			);
-		}
-	}, []);
-
 	const {
 		mode,
 		setMode,
@@ -67,7 +52,12 @@ export default function AgentChatPage() {
 	const [chatMessages, setChatMessages] = useState<ChatMsg[]>([]);
 	const [currentWorkflowData, setCurrentWorkflowData] = useState<any>(null);
 	const [workflowStatus, setWorkflowStatus] = useState<
-		"running" | "stopped" | "completed" | "failed" | "waiting_response"
+		| "running"
+		| "stopped"
+		| "completed"
+		| "failed"
+		| "waiting_response"
+		| "in_progress"
 	>("running");
 	const [currentWorkflowId, setCurrentWorkflowId] = useState<string | null>(
 		null
@@ -82,6 +72,7 @@ export default function AgentChatPage() {
 
 	const lastLoadedAgentId = useRef<string | null>(null);
 	const messagesEndRef = useRef<HTMLDivElement>(null);
+	const hasAutoSubmittedRef = useRef(false);
 
 	const handleModeChange = (newMode: "chat" | "agent") => {
 		if (newMode === "chat") {
@@ -123,36 +114,23 @@ export default function AgentChatPage() {
 		if (!message.trim() || !selectedAgent || !skyBrowser || !address)
 			return;
 
-		// Check if we're currently in feedback mode
 		if (
 			isInFeedbackMode ||
 			currentWorkflowData?.workflowStatus === "waiting_response"
 		) {
-			console.log(
-				"🔄 Detected feedback mode, handling feedback response",
-				{
-					isInFeedbackMode,
-					workflowStatus: currentWorkflowData?.workflowStatus,
-					message: message.substring(0, 50) + "...",
-				}
-			);
-			// This is a feedback response, not a new prompt
 			await handleFeedbackResponse(message);
 			return;
 		}
 
-		console.log("🚀 Starting new workflow execution");
 		try {
 			setIsExecuting(true);
 			setPollingStatus(true);
 			setWorkflowStatus("running");
 			setIsInFeedbackMode(false);
 
-			// Clear ALL existing messages and start fresh
 			setChatMessages([]);
 			setCurrentWorkflowData(null);
 
-			// Add the user's question as the first message
 			const userMessage: ChatMsg = {
 				id: `user_${Date.now()}`,
 				type: "user",
@@ -163,23 +141,11 @@ export default function AgentChatPage() {
 			setChatMessages([userMessage]);
 
 			const onStatusUpdate = (data: any) => {
-				console.log("📊 Workflow status update:", data);
-				console.log("🔄 Current workflow status:", data.workflowStatus);
-				console.log(
-					"🔍 Workflow executor polling status:",
-					workflowExecutor.isPolling()
-				);
-				console.log(
-					"🔍 Current workflow ID in component:",
-					currentWorkflowId
-				);
-
-				// Store current workflow data for progress display
 				setCurrentWorkflowData(data);
 
-				// Store workflow ID if available
 				if (data?.requestId && !currentWorkflowId) {
 					setCurrentWorkflowId(data.requestId);
+					workflowExecutor.setCurrentWorkflowId(data.requestId);
 				}
 
 				if (
@@ -196,45 +162,13 @@ export default function AgentChatPage() {
 					setChatMessages((prevMessages) => {
 						const updatedMessages = [...prevMessages];
 
-						// If all subnets are pending, only show the first one
+						// If all subnets are pending, don't show any messages until they start processing
 						if (allPending) {
-							const firstSubnet = data.subnets[0];
-							const existingMessageIndex =
-								updatedMessages.findIndex(
-									(msg) =>
-										msg.type === "workflow_subnet" &&
-										msg.subnetIndex === 0
-								);
-
-							const subnetContent = `Waiting to start...`;
-
-							if (existingMessageIndex >= 0) {
-								// Update existing message
-								updatedMessages[existingMessageIndex] = {
-									...updatedMessages[existingMessageIndex],
-									subnetStatus: firstSubnet.status,
-									content: subnetContent,
-								};
-							} else {
-								// Create new message for the first subnet only
-								const newMessage: ChatMsg = {
-									id: `subnet_0_${Date.now()}`,
-									type: "pending",
-									content: "Waiting to start...",
-									timestamp: new Date(),
-									subnetStatus: firstSubnet.status,
-									toolName: firstSubnet.toolName,
-									subnetIndex: 0,
-								};
-
-								updatedMessages.push(newMessage);
-							}
-
-							// Remove any other subnet messages if they exist
+							// Remove any existing pending messages and return current messages
 							return updatedMessages.filter(
 								(msg) =>
-									msg.type !== "workflow_subnet" ||
-									msg.subnetIndex === 0
+									msg.type !== "pending" &&
+									msg.type !== "workflow_subnet"
 							);
 						} else {
 							// Handle normal subnet updates (not all pending)
@@ -280,7 +214,8 @@ export default function AgentChatPage() {
 									) {
 										subnetContent = "Processing...";
 									} else if (subnet.status === "pending") {
-										subnetContent = "Waiting to start...";
+										// Don't show pending messages to users
+										subnetContent = "";
 									} else if (subnet.status === "failed") {
 										subnetContent = "Failed to process";
 									} else {
@@ -288,29 +223,42 @@ export default function AgentChatPage() {
 										subnetContent = "Processing...";
 									}
 
-									if (existingMessageIndex >= 0) {
-										// Update existing message
-										updatedMessages[existingMessageIndex] =
-											{
+									// Only create/update messages if there's content to show
+									if (
+										subnetContent &&
+										subnetContent.trim() !== ""
+									) {
+										if (existingMessageIndex >= 0) {
+											// Update existing message
+											updatedMessages[
+												existingMessageIndex
+											] = {
 												...updatedMessages[
 													existingMessageIndex
 												],
 												subnetStatus: subnet.status,
 												content: subnetContent,
 											};
-									} else {
-										// Create new message for this subnet
-										const newMessage: ChatMsg = {
-											id: `subnet_${index}_${Date.now()}`,
-											type: "workflow_subnet",
-											content: subnetContent,
-											timestamp: new Date(),
-											subnetStatus: subnet.status,
-											toolName: subnet.toolName,
-											subnetIndex: index,
-										};
+										} else {
+											// Create new message for this subnet
+											const newMessage: ChatMsg = {
+												id: `subnet_${index}_${Date.now()}`,
+												type: "workflow_subnet",
+												content: subnetContent,
+												timestamp: new Date(),
+												subnetStatus: subnet.status,
+												toolName: subnet.toolName,
+												subnetIndex: index,
+											};
 
-										updatedMessages.push(newMessage);
+											updatedMessages.push(newMessage);
+										}
+									} else if (existingMessageIndex >= 0) {
+										// Remove existing message if no content to show
+										updatedMessages.splice(
+											existingMessageIndex,
+											1
+										);
 									}
 								}
 							);
@@ -331,18 +279,6 @@ export default function AgentChatPage() {
 											(msg) => msg.type === "question"
 										);
 
-									console.log(
-										"🔍 Checking for existing question message:",
-										{
-											existingQuestionIndex,
-											subnetWithQuestion:
-												subnetWithQuestion.toolName,
-											question:
-												subnetWithQuestion.question
-													.text,
-										}
-									);
-
 									if (existingQuestionIndex === -1) {
 										// Add only one question message
 										const questionMessage: ChatMsg = {
@@ -356,10 +292,6 @@ export default function AgentChatPage() {
 												subnetWithQuestion.toolName,
 										};
 
-										console.log(
-											"✅ Adding new question message:",
-											questionMessage
-										);
 										updatedMessages.push(questionMessage);
 									} else {
 										console.log(
@@ -411,7 +343,6 @@ export default function AgentChatPage() {
 						setPollingStatus(false);
 						setWorkflowStatus("stopped");
 						setIsInFeedbackMode(false);
-						console.log("🛑 Workflow status updated to stopped");
 
 						// Preserve the workflow ID for resume operations
 						if (data.requestId && !currentWorkflowId) {
@@ -420,15 +351,18 @@ export default function AgentChatPage() {
 
 						// Notify workflow executor about external status change
 						workflowExecutor.handleExternalStatusChange("stopped");
+					} else if (data.workflowStatus === "in_progress") {
+						// Workflow is in progress, keep executing state
+						setIsExecuting(true);
+						setPollingStatus(true);
+						setWorkflowStatus("in_progress");
+						setIsInFeedbackMode(false);
 					} else if (data.workflowStatus === "waiting_response") {
 						// Keep executing state true when waiting for response to show feedback UI
 						setIsExecuting(true);
 						setPollingStatus(true);
 						setWorkflowStatus("waiting_response");
 						setIsInFeedbackMode(true);
-						console.log(
-							"💬 Workflow waiting for user feedback - Feedback mode enabled"
-						);
 					}
 				}
 			};
@@ -442,8 +376,9 @@ export default function AgentChatPage() {
 				onStatusUpdate
 			);
 
-			// Store the workflow ID for resume/stop operations
 			setCurrentWorkflowId(workflowId);
+
+			workflowExecutor.setCurrentWorkflowId(workflowId);
 
 			setPrompt("");
 		} catch (error) {
@@ -456,10 +391,6 @@ export default function AgentChatPage() {
 
 	// Handle feedback response submission
 	const handleFeedbackResponse = async (feedback: string) => {
-		console.log("💬 Handling feedback response:", feedback);
-		console.log("🔍 Current polling status:", workflowExecutor.isPolling());
-		console.log("🔍 Current workflow ID:", currentWorkflowId);
-
 		if (!currentWorkflowId || !skyBrowser || !address) {
 			console.error("Missing required data for feedback submission");
 			return;
@@ -477,7 +408,6 @@ export default function AgentChatPage() {
 				timestamp: new Date(),
 			};
 
-			console.log("📝 Adding feedback message to chat:", feedbackMessage);
 			setChatMessages((prev) => [...prev, feedbackMessage]);
 
 			// Submit feedback to the workflow via the NFT_USER_AGENT_URL endpoint
@@ -486,7 +416,6 @@ export default function AgentChatPage() {
 				console.error(
 					"❌ NEXT_PUBLIC_NFT_USER_AGENT_URL environment variable is not configured"
 				);
-				// Add error message to chat
 				const errorMessage: ChatMsg = {
 					id: `error_${Date.now()}`,
 					type: "response",
@@ -498,7 +427,6 @@ export default function AgentChatPage() {
 				return;
 			}
 
-			// Get API key for authentication
 			const apiKey = await apiKeyManager.getApiKey(skyBrowser, {
 				address,
 			});
@@ -517,17 +445,10 @@ export default function AgentChatPage() {
 				return;
 			}
 
-			// Extract the question that needs to be answered
 			const subnetWithQuestion = currentWorkflowData?.subnets?.find(
 				(subnet: any) =>
 					subnet.status === "waiting_response" && subnet.question
 			);
-
-			console.log("🔍 Found subnet with question:", {
-				subnet: subnetWithQuestion?.toolName,
-				status: subnetWithQuestion?.status,
-				question: subnetWithQuestion?.question?.text,
-			});
 
 			if (!subnetWithQuestion?.question?.text) {
 				console.error(
@@ -549,10 +470,6 @@ export default function AgentChatPage() {
 				question: subnetWithQuestion.question.text,
 			};
 
-			console.log("🚀 Submitting feedback to workflow:", contextPayload);
-			console.log("❓ Answering question:", contextPayload.question);
-
-			// Add a "submitting feedback" message to show progress
 			const submittingMessage: ChatMsg = {
 				id: `submitting_${Date.now()}`,
 				type: "response",
@@ -561,7 +478,6 @@ export default function AgentChatPage() {
 			};
 			setChatMessages((prev) => [...prev, submittingMessage]);
 
-			// Make the API call to submit feedback with API key header
 			const response = await fetch(`${nftUserAgentUrl}/natural-request`, {
 				method: "POST",
 				headers: {
@@ -578,9 +494,7 @@ export default function AgentChatPage() {
 			}
 
 			const result = await response.json();
-			console.log("✅ Feedback submitted successfully:", result);
 
-			// Remove the "submitting feedback" message and add success message
 			setChatMessages((prev) =>
 				prev.filter((msg) => msg.id !== submittingMessage.id)
 			);
@@ -593,17 +507,12 @@ export default function AgentChatPage() {
 			};
 			setChatMessages((prev) => [...prev, successMessage]);
 
-			// Clear the prompt after successful submission
 			setPrompt("");
 
-			// Update workflow status to indicate feedback was submitted
-			// The workflow should continue processing after feedback is submitted
 			setWorkflowStatus("running");
 			setIsExecuting(true);
 			setIsInFeedbackMode(false);
-			console.log("✅ Feedback mode cleared, workflow continuing...");
 
-			// Update the current workflow data to reflect the new status
 			if (currentWorkflowData) {
 				setCurrentWorkflowData({
 					...currentWorkflowData,
@@ -611,9 +520,6 @@ export default function AgentChatPage() {
 				});
 			}
 
-			// Remove the continuation message - just show success and let the workflow continue silently
-
-			// Verify that the workflow executor is still polling for this workflow
 			if (workflowExecutor.getCurrentWorkflowId() === currentWorkflowId) {
 				console.log(
 					"✅ Workflow executor is still active and polling for workflow:",
@@ -624,14 +530,6 @@ export default function AgentChatPage() {
 					"⚠️ Workflow executor is not polling for the current workflow. This might indicate an issue."
 				);
 			}
-
-			// Log the current state for debugging
-			console.log("🔄 Workflow state after feedback submission:", {
-				workflowId: currentWorkflowId,
-				workflowStatus: "running",
-				isExecuting: true,
-				isSubmittingFeedback: false,
-			});
 		} catch (error) {
 			console.error("Error submitting feedback:", error);
 
@@ -663,8 +561,6 @@ export default function AgentChatPage() {
 		}
 
 		try {
-			console.log("🚨 Emergency stopping workflow:", currentWorkflowId);
-
 			// Call emergency stop API
 			const success = await workflowExecutor.emergencyStop(
 				skyBrowser,
@@ -677,7 +573,6 @@ export default function AgentChatPage() {
 				setIsExecuting(false);
 				setPollingStatus(false);
 				setWorkflowStatus("stopped");
-				console.log("✅ Workflow emergency stopped successfully");
 			} else {
 				console.error("❌ Failed to emergency stop workflow");
 			}
@@ -697,19 +592,13 @@ export default function AgentChatPage() {
 		}
 
 		try {
-			console.log("▶️ Resuming workflow:", currentWorkflowId);
-
 			// Create a new status callback with access to current state
 			const newStatusCallback = (data: any) => {
-				console.log("📊 Workflow status update (resumed):", data);
-				console.log("🔄 Current workflow status:", data.workflowStatus);
-
-				// Store current workflow data for progress display
 				setCurrentWorkflowData(data);
 
-				// Store workflow ID if available
 				if (data?.requestId && !currentWorkflowId) {
 					setCurrentWorkflowId(data.requestId);
+					workflowExecutor.setCurrentWorkflowId(data.requestId);
 				}
 
 				if (
@@ -717,54 +606,18 @@ export default function AgentChatPage() {
 					Array.isArray(data.subnets) &&
 					data.subnets.length > 0
 				) {
-					// Check if all subnets are pending
 					const allPending = data.subnets.every(
 						(subnet: any) => subnet.status === "pending"
 					);
 
-					// Update chat messages using functional state update to avoid stale closures
 					setChatMessages((prevMessages) => {
 						const updatedMessages = [...prevMessages];
 
-						// If all subnets are pending, only show the first one
 						if (allPending) {
-							const firstSubnet = data.subnets[0];
-							const existingMessageIndex =
-								updatedMessages.findIndex(
-									(msg) =>
-										msg.type === "workflow_subnet" &&
-										msg.subnetIndex === 0
-								);
-
-							const subnetContent = `Waiting to start...`;
-
-							if (existingMessageIndex >= 0) {
-								// Update existing message
-								updatedMessages[existingMessageIndex] = {
-									...updatedMessages[existingMessageIndex],
-									subnetStatus: firstSubnet.status,
-									content: subnetContent,
-								};
-							} else {
-								// Create new message for the first subnet only
-								const newMessage: ChatMsg = {
-									id: `subnet_0_${Date.now()}`,
-									type: "pending",
-									content: "Waiting to start...",
-									timestamp: new Date(),
-									subnetStatus: firstSubnet.status,
-									toolName: firstSubnet.toolName,
-									subnetIndex: 0,
-								};
-
-								updatedMessages.push(newMessage);
-							}
-
-							// Remove any other subnet messages if they exist
 							return updatedMessages.filter(
 								(msg) =>
-									msg.type !== "workflow_subnet" ||
-									msg.subnetIndex === 0
+									msg.type !== "pending" &&
+									msg.type !== "workflow_subnet"
 							);
 						} else {
 							// Handle normal subnet updates (not all pending)
@@ -810,7 +663,8 @@ export default function AgentChatPage() {
 									) {
 										subnetContent = "Processing...";
 									} else if (subnet.status === "pending") {
-										subnetContent = "Waiting to start...";
+										// Don't show pending messages to users
+										subnetContent = "";
 									} else if (subnet.status === "failed") {
 										subnetContent = "Failed to process";
 									} else {
@@ -818,29 +672,42 @@ export default function AgentChatPage() {
 										subnetContent = "Processing...";
 									}
 
-									if (existingMessageIndex >= 0) {
-										// Update existing message
-										updatedMessages[existingMessageIndex] =
-											{
+									// Only create/update messages if there's content to show
+									if (
+										subnetContent &&
+										subnetContent.trim() !== ""
+									) {
+										if (existingMessageIndex >= 0) {
+											// Update existing message
+											updatedMessages[
+												existingMessageIndex
+											] = {
 												...updatedMessages[
 													existingMessageIndex
 												],
 												subnetStatus: subnet.status,
 												content: subnetContent,
 											};
-									} else {
-										// Create new message for this subnet
-										const newMessage: ChatMsg = {
-											id: `subnet_${index}_${Date.now()}`,
-											type: "workflow_subnet",
-											content: subnetContent,
-											timestamp: new Date(),
-											subnetStatus: subnet.status,
-											toolName: subnet.toolName,
-											subnetIndex: index,
-										};
+										} else {
+											// Create new message for this subnet
+											const newMessage: ChatMsg = {
+												id: `subnet_${index}_${Date.now()}`,
+												type: "workflow_subnet",
+												content: subnetContent,
+												timestamp: new Date(),
+												subnetStatus: subnet.status,
+												toolName: subnet.toolName,
+												subnetIndex: index,
+											};
 
-										updatedMessages.push(newMessage);
+											updatedMessages.push(newMessage);
+										}
+									} else if (existingMessageIndex >= 0) {
+										// Remove existing message if no content to show
+										updatedMessages.splice(
+											existingMessageIndex,
+											1
+										);
 									}
 								}
 							);
@@ -861,18 +728,6 @@ export default function AgentChatPage() {
 											(msg) => msg.type === "question"
 										);
 
-									console.log(
-										"🔍 Checking for existing question message:",
-										{
-											existingQuestionIndex,
-											subnetWithQuestion:
-												subnetWithQuestion.toolName,
-											question:
-												subnetWithQuestion.question
-													.text,
-										}
-									);
-
 									if (existingQuestionIndex === -1) {
 										// Add only one question message
 										const questionMessage: ChatMsg = {
@@ -886,10 +741,6 @@ export default function AgentChatPage() {
 												subnetWithQuestion.toolName,
 										};
 
-										console.log(
-											"✅ Adding new question message:",
-											questionMessage
-										);
 										updatedMessages.push(questionMessage);
 									} else {
 										console.log(
@@ -941,32 +792,28 @@ export default function AgentChatPage() {
 						setPollingStatus(false);
 						setWorkflowStatus("stopped");
 						setIsInFeedbackMode(false);
-						console.log("🛑 Workflow status updated to stopped");
 
-						// Preserve the workflow ID for resume operations
 						if (data.requestId && !currentWorkflowId) {
 							setCurrentWorkflowId(data.requestId);
 						}
 
-						// Notify workflow executor about external status change
 						workflowExecutor.handleExternalStatusChange("stopped");
+					} else if (data.workflowStatus === "in_progress") {
+						setIsExecuting(true);
+						setPollingStatus(true);
+						setWorkflowStatus("in_progress");
+						setIsInFeedbackMode(false);
 					} else if (data.workflowStatus === "waiting_response") {
-						// Keep executing state true when waiting for response to show feedback UI
 						setIsExecuting(true);
 						setPollingStatus(true);
 						setWorkflowStatus("waiting_response");
 						setIsInFeedbackMode(true);
-						console.log(
-							"💬 Workflow waiting for user feedback - Feedback mode enabled"
-						);
 					}
 				}
 			};
 
-			// Set the new callback in the executor
 			workflowExecutor.setCurrentStatusCallback(newStatusCallback);
 
-			// Call resume API
 			const success = await workflowExecutor.resumeWorkflow(
 				skyBrowser,
 				{
@@ -979,13 +826,11 @@ export default function AgentChatPage() {
 				setIsExecuting(true);
 				setPollingStatus(true);
 				setWorkflowStatus("running");
-				console.log("✅ Workflow resumed successfully");
 			} else {
 				console.error("❌ Failed to resume workflow");
 			}
 		} catch (error) {
 			console.error("Error during workflow resume:", error);
-			// Fallback: just resume locally
 			setIsExecuting(true);
 			setPollingStatus(true);
 			setWorkflowStatus("running");
@@ -996,15 +841,49 @@ export default function AgentChatPage() {
 		messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
 	}, [chatMessages]);
 
-	// Cleanup workflow when component unmounts
 	useEffect(() => {
 		return () => {
-			// Only clear if the workflow is not in a resumable state
-			if (currentWorkflowId && workflowStatus !== "stopped") {
+			if (
+				currentWorkflowId &&
+				workflowStatus !== "stopped" &&
+				workflowStatus !== "waiting_response" &&
+				workflowStatus !== "in_progress" &&
+				workflowStatus !== "running"
+			) {
 				workflowExecutor.clearCurrentWorkflow();
 			}
 		};
 	}, [currentWorkflowId, workflowStatus]);
+
+	// Auto-submit prompt after navigation from create page once everything is ready
+	useEffect(() => {
+		if (isLoading) return;
+		if (hasAutoSubmittedRef.current) return;
+		if (
+			selectedAgent &&
+			selectedAgent.id === agentId &&
+			prompt &&
+			prompt.trim().length > 0 &&
+			skyBrowser &&
+			address &&
+			!isExecuting &&
+			!isSubmittingFeedback &&
+			chatMessages.length === 0
+		) {
+			hasAutoSubmittedRef.current = true;
+			handlePromptSubmit(prompt);
+		}
+	}, [
+		isLoading,
+		selectedAgent,
+		agentId,
+		prompt,
+		skyBrowser,
+		address,
+		isExecuting,
+		isSubmittingFeedback,
+		chatMessages.length,
+	]);
 
 	useEffect(() => {
 		let isMounted = true;
@@ -1085,7 +964,7 @@ export default function AgentChatPage() {
 						</div>
 					</div>
 				) : (
-					<div className="overflow-y-auto scrollbar-thin h-full">
+					<div className="overflow-y-auto scrollbar-thin h-[calc(100vh-10rem)]">
 						{chatMessages.map((message) => (
 							<ChatMessage key={message.id} message={message} />
 						))}

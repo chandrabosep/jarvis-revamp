@@ -45,7 +45,7 @@ export default function CreatePage() {
 	return (
 		<div className="flex flex-col items-center h-full w-full relative gap-y-20">
 			<div className="h-fit flex flex-col items-center justify-center gap-y-10 mt-[20%]">
-				<div className="flex items-center justify-center gap-6">
+				{/* <div className="flex items-center justify-center gap-6">
 					<ChatCard
 						title="Mint an NFT collection"
 						description=" Go on-chain"
@@ -76,12 +76,18 @@ export default function CreatePage() {
 							)
 						}
 					/>
-				</div>
+				</div> */}
+				<Image
+					src="/full-logo.svg"
+					alt="Create"
+					width={1000}
+					height={1000}
+					className="w-full max-w-80 h-full"
+				/>
 			</div>
 			<div className="w-fit min-w-4xl">
 				<ChatInput
 					onSend={handlePromptSubmit}
-					chatHistory={[]}
 					mode={mode}
 					setMode={handleModeChange}
 					prompt={prompt}

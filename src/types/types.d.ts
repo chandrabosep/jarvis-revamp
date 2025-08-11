@@ -14,5 +14,6 @@ export interface ChatInputProps {
 		| "stopped"
 		| "completed"
 		| "failed"
-		| "waiting_response";
+		| "waiting_response"
+		| "in_progress";
 }

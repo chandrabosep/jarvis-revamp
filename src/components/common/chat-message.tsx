@@ -95,11 +95,11 @@ export function ChatMessage({ message, isLast = false }: ChatMessageProps) {
 				></div>
 
 				<div className="relative z-10 flex-shrink-0 ml-0.5 mr-4">
-					<div className="size-3 rounded-full border-2 border-blue-700 bg-blue-500"></div>
+					<div className="size-3 rounded-full border-2 border-gray-700 bg-gray-500"></div>
 				</div>
 
-				<div className="flex-1 min-w-0">
-					<div className="text-blue-100 text-sm leading-relaxed whitespace-pre-wrap ">
+				<div className="flex-1 min-w-0 ">
+					<div className="w-fit px-5 py-0.5 rounded-xl border border-border text-foreground text-sm leading-relaxed whitespace-pre-wrap ">
 						{message.content}
 					</div>
 					<div className="text-xs text-gray-500 mt-2">
