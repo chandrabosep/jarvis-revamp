@@ -36,6 +36,13 @@ type ChatMsg = {
 	imageData?: string;
 	isImage?: boolean;
 	contentType?: string;
+	// Question specific fields for authentication
+	questionData?: {
+		type: string;
+		text: string;
+		itemID: number;
+		expiresAt: string;
+	};
 };
 
 export default function AgentChatPage() {
@@ -419,6 +426,8 @@ export default function AgentChatPage() {
 											timestamp: new Date(),
 											toolName:
 												subnetWithQuestion.toolName,
+											questionData:
+												subnetWithQuestion.question,
 										};
 
 										updatedMessages.push(questionMessage);
@@ -882,6 +891,8 @@ export default function AgentChatPage() {
 											timestamp: new Date(),
 											toolName:
 												subnetWithQuestion.toolName,
+											questionData:
+												subnetWithQuestion.question,
 										};
 
 										updatedMessages.push(questionMessage);

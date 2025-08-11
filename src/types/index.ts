@@ -110,6 +110,12 @@ export interface WorkflowExecutionResponse {
 			| "waiting_response";
 		data: any;
 		prompt: string | null;
+		question?: {
+			type: string;
+			text: string;
+			itemID: number;
+			expiresAt: string;
+		};
 	}>;
 }
 

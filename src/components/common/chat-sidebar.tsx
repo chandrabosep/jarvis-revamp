@@ -18,7 +18,7 @@ import {
 	SelectValue,
 } from "../ui/select";
 import { Label } from "../ui/label";
-		import {
+import {
 	MoreVerticalIcon,
 	Clock,
 	Loader2,
@@ -207,9 +207,7 @@ export default function ChatSidebar() {
 									className="p-1 hover:bg-accent rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
 									title="Refresh history"
 								>
-									<RefreshCw
-										className={`h-3 w-3 `}
-									/>
+									<RefreshCw className={`h-3 w-3 `} />
 								</button>
 							)}
 						</SidebarMenuItem>
@@ -277,21 +275,13 @@ export default function ChatSidebar() {
 																	>
 																		<span className="text-sm text-ellipsis whitespace-nowrap overflow-hidden cursor-pointer">
 																			{workflow.prompt ||
-																				workflow.requestId ||
-																				`Workflow ${
-																					index +
-																					1
-																				}`}
+																				workflow.requestId}
 																		</span>
 																	</TooltipTrigger>
 																	<TooltipContent>
 																		<p className="max-w-xs">
 																			{workflow.prompt ||
-																				workflow.requestId ||
-																				`Workflow ${
-																					index +
-																					1
-																				}`}
+																				workflow.requestId}
 																		</p>
 																	</TooltipContent>
 																</Tooltip>
