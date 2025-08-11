@@ -450,6 +450,9 @@ export default function AgentChatPage() {
 
 						// Notify workflow executor about external status change
 						workflowExecutor.handleExternalStatusChange("stopped");
+
+						// Update the execution store to keep it in sync
+						stopCurrentExecution();
 					} else if (data.workflowStatus === "in_progress") {
 						// Workflow is in progress, keep executing state
 						setIsExecuting(true);
@@ -672,6 +675,7 @@ export default function AgentChatPage() {
 				setIsExecuting(false);
 				setPollingStatus(false);
 				setWorkflowStatus("stopped");
+				stopCurrentExecution();
 			} else {
 				console.error("❌ Failed to emergency stop workflow");
 			}
@@ -681,6 +685,7 @@ export default function AgentChatPage() {
 			setIsExecuting(false);
 			setPollingStatus(false);
 			setWorkflowStatus("stopped");
+			stopCurrentExecution();
 		}
 	};
 
@@ -913,6 +918,9 @@ export default function AgentChatPage() {
 						}
 
 						workflowExecutor.handleExternalStatusChange("stopped");
+
+						// Update the execution store to keep it in sync
+						stopCurrentExecution();
 					} else if (data.workflowStatus === "in_progress") {
 						setIsExecuting(true);
 						setPollingStatus(true);
@@ -1174,15 +1182,25 @@ export default function AgentChatPage() {
 					hideModeSelection={true}
 					disableAgentSelection={true}
 					isExecuting={
-						isExecuting ||
+						(workflowStatus === "stopped" ? false : isExecuting) ||
 						isSubmittingFeedback ||
-						currentExecution?.workflowStatus === "in_progress" ||
-						currentExecution?.workflowStatus === "pending" ||
-						currentExecution?.workflowStatus === "waiting_response"
+						(workflowStatus === "stopped"
+							? false
+							: currentExecution?.workflowStatus ===
+							  "in_progress") ||
+						(workflowStatus === "stopped"
+							? false
+							: currentExecution?.workflowStatus === "pending") ||
+						(workflowStatus === "stopped"
+							? false
+							: currentExecution?.workflowStatus ===
+							  "waiting_response")
 					}
 					workflowStatus={
-						currentWorkflowData?.workflowStatus ===
-						"waiting_response"
+						workflowStatus === "stopped"
+							? "stopped"
+							: currentWorkflowData?.workflowStatus ===
+							  "waiting_response"
 							? "waiting_response"
 							: workflowStatus
 					}
