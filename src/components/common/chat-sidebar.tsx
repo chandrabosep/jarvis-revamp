@@ -26,6 +26,7 @@ import {
 	CheckCircle,
 	XCircle,
 	TimerIcon,
+	PinIcon,
 } from "lucide-react";
 import { useHistory } from "@/hooks/use-history";
 import {
@@ -36,10 +37,10 @@ import {
 } from "../ui/tooltip";
 import { Skeleton } from "../ui/skeleton";
 import { useWallet } from "@/hooks/use-wallet";
+import { Button } from "../ui/button";
 
 const CHAT_OPTIONS = [1, 5, 10, 15, 20] as const;
 
-// Map workflow status to icon
 const getWorkflowIcon = (status: string) => {
 	switch (status) {
 		case "completed":
@@ -59,44 +60,46 @@ export default function ChatSidebar() {
 	const [isSelectOpen, setIsSelectOpen] = useState(false);
 	const [isMenuSelectOpen, setIsMenuSelectOpen] = useState(false);
 	const [isRefreshing, setIsRefreshing] = useState(false);
+	const [isPinned, setIsPinned] = useState(false);
 	const sidebarRef = useRef<HTMLDivElement>(null);
 
-	// Use the history hook to fetch real data
 	const { history, loading, error, fetchHistory } = useHistory(chatCount);
 	const { address } = useWallet();
 
-	// Check if wallet is connected
 	const hasWallet = !!address;
 
 	const handleMouseEnter = useCallback(() => {
-		setIsExpanded(true);
-	}, []);
+		if (!isPinned) {
+			setIsExpanded(true);
+		}
+	}, [isPinned]);
 
 	const handleMouseLeave = useCallback(() => {
-		if (!isSelectOpen && !isMenuSelectOpen) {
+		if (!isPinned && !isSelectOpen && !isMenuSelectOpen) {
 			setIsExpanded(false);
 		}
-	}, [isSelectOpen, isMenuSelectOpen]);
+	}, [isPinned, isSelectOpen, isMenuSelectOpen]);
 
 	const handleSelectOpenChange = useCallback(
 		(open: boolean) => {
 			setIsSelectOpen(open);
 
 			if (open) {
-				setIsExpanded(true);
+				if (!isPinned) setIsExpanded(true);
 			} else {
 				setTimeout(() => {
 					if (
 						sidebarRef.current &&
 						!sidebarRef.current.matches(":hover") &&
-						!isMenuSelectOpen
+						!isMenuSelectOpen &&
+						!isPinned
 					) {
 						setIsExpanded(false);
 					}
 				}, 50);
 			}
 		},
-		[isMenuSelectOpen]
+		[isMenuSelectOpen, isPinned]
 	);
 
 	const handleMenuSelectOpenChange = useCallback(
@@ -104,20 +107,21 @@ export default function ChatSidebar() {
 			setIsMenuSelectOpen(open);
 
 			if (open) {
-				setIsExpanded(true);
+				if (!isPinned) setIsExpanded(true);
 			} else {
 				setTimeout(() => {
 					if (
 						sidebarRef.current &&
 						!sidebarRef.current.matches(":hover") &&
-						!isSelectOpen
+						!isSelectOpen &&
+						!isPinned
 					) {
 						setIsExpanded(false);
 					}
 				}, 50);
 			}
 		},
-		[isSelectOpen]
+		[isSelectOpen, isPinned]
 	);
 
 	const handleChatCountChange = useCallback(
@@ -140,16 +144,17 @@ export default function ChatSidebar() {
 		}
 	}, [fetchHistory, isRefreshing]);
 
-	// Use real history if available, otherwise show empty state
 	const visibleItems =
 		hasWallet && history.length > 0 ? history.slice(0, chatCount) : [];
+
+	const sidebarIsExpanded = isPinned || isExpanded;
 
 	return (
 		<Sidebar
 			ref={sidebarRef}
 			collapsible="none"
 			className={`rounded-lg transition-all duration-200 ease-in-out flex flex-col   ${
-				!isExpanded
+				!sidebarIsExpanded
 					? "w-[calc(var(--sidebar-width-icon)+5px)]!"
 					: "!w-56"
 			} `}
@@ -161,55 +166,67 @@ export default function ChatSidebar() {
 					<SidebarMenu className="w-full px-1">
 						<SidebarMenuItem
 							className={`flex items-center gap-x-2 w-full transition-all duration-200 ${
-								isExpanded
+								sidebarIsExpanded
 									? "justify-between"
 									: "justify-center"
 							}`}
 						>
 							<Label
 								className={`text-sm font-medium transition-opacity duration-200 hidden text-primary-foreground ${
-									isExpanded && "block"
+									sidebarIsExpanded && "block"
 								}`}
 							>
 								{loading ? "Loading..." : "Recents"}
 							</Label>
-							<Select
-								onOpenChange={handleSelectOpenChange}
-								value={chatCount.toString()}
-								onValueChange={handleChatCountChange}
-							>
-								<SelectTrigger
-									className={`!w-fit !h-7 px-[3.5px] py-0 !gap-x-1 bg-background border-0 text-sm rounded-md ${
-										isExpanded ? "px-[6px]" : "px-[3.5px]"
-									}`}
+							<div className="flex items-center gap-x-2">
+								<Select
+									onOpenChange={handleSelectOpenChange}
+									value={chatCount.toString()}
+									onValueChange={handleChatCountChange}
 								>
-									{loading ? (
-										<Loader2 className="h-3 w-3 animate-spin" />
-									) : (
-										<SelectValue />
-									)}
-								</SelectTrigger>
-								<SelectContent>
-									{CHAT_OPTIONS.map((count) => (
-										<SelectItem
-											key={count}
-											value={count.toString()}
-										>
-											{count}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-							{isExpanded && (error || loading) && (
-								<button
-									onClick={handleRefresh}
-									disabled={isRefreshing}
-									className="p-1 hover:bg-accent rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-									title="Refresh history"
+									<SelectTrigger
+										className={`!w-fit !h-7 px-[3.5px] py-0 !gap-x-1 bg-background border-0 text-sm rounded-md ${
+											sidebarIsExpanded
+												? "px-[6px]"
+												: "px-[3.5px]"
+										}`}
+									>
+										{loading ? (
+											<Loader2 className="h-3 w-3 animate-spin" />
+										) : (
+											<SelectValue />
+										)}
+									</SelectTrigger>
+									<SelectContent>
+										{CHAT_OPTIONS.map((count) => (
+											<SelectItem
+												key={count}
+												value={count.toString()}
+											>
+												{count}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+								{sidebarIsExpanded && (error || loading) && (
+									<button
+										onClick={handleRefresh}
+										disabled={isRefreshing}
+										className="p-1 hover:bg-accent rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+										title="Refresh history"
+									>
+										<RefreshCw className={`h-3 w-3 `} />
+									</button>
+								)}
+								<div
+									onClick={() => setIsPinned(!isPinned)}
+									className={`!w-fit !h-7 px-2 flex items-center justify-center rounded-md transition-colors duration-200 ${
+										sidebarIsExpanded ? "block" : "hidden"
+									} ${isPinned ? "bg-background" : ""}`}
 								>
-									<RefreshCw className={`h-3 w-3 `} />
-								</button>
-							)}
+									<PinIcon className="!size-4  rotate-45" />
+								</div>
+							</div>
 						</SidebarMenuItem>
 					</SidebarMenu>
 				</SidebarHeader>
@@ -217,10 +234,10 @@ export default function ChatSidebar() {
 				<SidebarGroup>
 					<SidebarMenu
 						className={`gap-y-2 flex flex-col transition-all duration-100 px-0 ${
-							isExpanded ? "items-start" : "items-center"
+							sidebarIsExpanded ? "items-start" : "items-center"
 						}`}
 					>
-						{error && isExpanded && (
+						{error && sidebarIsExpanded && (
 							<div className="px-2 py-1 text-xs text-red-500">
 								Failed to load history: {error}
 							</div>
@@ -265,7 +282,7 @@ export default function ChatSidebar() {
 														className={`!size-[19px]`}
 													/>
 												)}
-												{isExpanded && (
+												{sidebarIsExpanded && (
 													<div className="flex items-center !w-full flex-1 min-w-0">
 														<div className="flex flex-col w-[140px] min-w-0">
 															<TooltipProvider>
@@ -292,7 +309,7 @@ export default function ChatSidebar() {
 													</div>
 												)}
 											</Link>
-											{isExpanded && (
+											{sidebarIsExpanded && (
 												<Select
 													onOpenChange={
 														handleMenuSelectOpenChange
