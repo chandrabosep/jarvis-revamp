@@ -216,7 +216,7 @@ export interface HistoryItem {
 	requestId: string;
 	agentId?: string;
 	agentName?: string;
-	prompt?: string;
+	userPrompt?: string;
 	status:
 		| "in_progress"
 		| "completed"

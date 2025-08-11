@@ -42,7 +42,7 @@ const navItems = [
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 	const pathname = usePathname();
-	const isChat = pathname.includes("/chat");
+	const isChat = pathname.includes("/chat") || pathname.includes("/create");
 
 	return (
 		<>

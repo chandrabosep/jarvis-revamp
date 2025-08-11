@@ -274,13 +274,13 @@ export default function ChatSidebar() {
 																		asChild
 																	>
 																		<span className="text-sm text-ellipsis whitespace-nowrap overflow-hidden cursor-pointer">
-																			{workflow.prompt ||
+																			{workflow.userPrompt ||
 																				workflow.requestId}
 																		</span>
 																	</TooltipTrigger>
 																	<TooltipContent>
 																		<p className="max-w-xs">
-																			{workflow.prompt ||
+																			{workflow.userPrompt ||
 																				workflow.requestId}
 																		</p>
 																	</TooltipContent>
