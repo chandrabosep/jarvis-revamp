@@ -13,6 +13,7 @@ export const getAgents = async (
 	web3Context?: Web3Context
 ): Promise<AgentResponse> => {
 	const axiosInstance = await getAxiosInstanceWithApiKey(
+		process.env.NEXT_PUBLIC_API_BASE_URL || "",
 		skyBrowser,
 		web3Context
 	);
@@ -37,6 +38,7 @@ export const getUserAgents = async (
 	web3Context?: Web3Context
 ): Promise<AgentResponse> => {
 	const axiosInstance = await getAxiosInstanceWithApiKey(
+		process.env.NEXT_PUBLIC_NFT_USER_AGENT_URL || "",
 		skyBrowser,
 		web3Context
 	);
@@ -57,6 +59,7 @@ export const getAgentById = async (
 	web3Context?: Web3Context
 ): Promise<AgentDetailResponse> => {
 	const axiosInstance = await getAxiosInstanceWithApiKey(
+		process.env.NEXT_PUBLIC_NFT_USER_AGENT_URL || "",
 		skyBrowser,
 		web3Context
 	);

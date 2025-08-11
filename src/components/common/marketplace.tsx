@@ -166,10 +166,14 @@ export default function Marketplace({ disabled = false }: MarketplaceProps) {
 			setLoading(true);
 			setError(null);
 			try {
-				const data = await getAgents({
-					search: searchValue,
-					limit: 21,
-				});
+				const data = await getAgents(
+					{
+						search: searchValue,
+						limit: 21,
+					},
+					skyBrowser || undefined,
+					{ address } as any
+				);
 				const agentsWithOwnership = await Promise.all(
 					(data?.data?.agents || []).map(async (agent: Agent) => {
 						const isOwned = await checkAgentOwnership(
