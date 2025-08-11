@@ -23,6 +23,8 @@
 		"@radix-ui/react-switch": "^1.2.5",
 		"@radix-ui/react-toast": "^1.2.14",
 		"@radix-ui/react-tooltip": "^1.2.7",
+		"@splinetool/react-spline": "^4.1.0",
+		"@splinetool/runtime": "^1.10.44",
 		"@web3auth/base": "^9.7.0",
 		"@web3auth/ethereum-provider": "^9.7.0",
 		"@web3auth/modal": "^9.7.0",

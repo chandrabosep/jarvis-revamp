@@ -32,6 +32,10 @@ type ChatMsg = {
 		| "waiting_response";
 	toolName?: string;
 	subnetIndex?: number;
+	// File data fields
+	imageData?: string;
+	isImage?: boolean;
+	contentType?: string;
 };
 
 export default function AgentChatPage() {
@@ -84,26 +88,137 @@ export default function AgentChatPage() {
 	};
 
 	// Helper: Parse agent response from workflow result
-	const parseAgentResponse = (subnetData: string): string | null => {
+	const parseAgentResponse = (
+		subnetData: string
+	): {
+		content: string | null;
+		imageData?: string;
+		isImage?: boolean;
+		contentType?: string;
+	} => {
 		try {
 			const parsed = JSON.parse(subnetData);
 
-			// Handle nested data structure
+			// Check for contentType first - this is the most reliable indicator
+			if (parsed?.contentType) {
+				const contentType = parsed.contentType.toLowerCase();
+
+				// Handle different content types
+				if (contentType.startsWith("image/")) {
+					// This is an image
+					let imageData = "";
+
+					// Check for fileData first
+					if (
+						parsed?.fileData &&
+						typeof parsed.fileData === "string"
+					) {
+						imageData = parsed.fileData;
+					} else if (
+						parsed?.data &&
+						typeof parsed.data === "string"
+					) {
+						// Fallback to data field
+						imageData = parsed.data;
+					}
+
+					if (imageData) {
+						return {
+							content: `${contentType
+								.split("/")[1]
+								.toUpperCase()} image generated successfully`,
+							imageData: imageData,
+							isImage: true,
+							contentType: contentType,
+						};
+					}
+				} else if (
+					contentType.startsWith("application/") ||
+					contentType.startsWith("text/")
+				) {
+					// This is a file or document
+					let fileData = "";
+
+					if (
+						parsed?.fileData &&
+						typeof parsed.fileData === "string"
+					) {
+						fileData = parsed.fileData;
+					} else if (
+						parsed?.data &&
+						typeof parsed.data === "string"
+					) {
+						fileData = parsed.data;
+					}
+
+					if (fileData) {
+						return {
+							content: `${contentType} file generated successfully`,
+							imageData: fileData, // We'll use imageData field for any file type
+							isImage: false,
+							contentType: contentType,
+						};
+					}
+				}
+			}
+
+			// Fallback: Check if this is image data by content patterns
+			if (
+				parsed?.data &&
+				typeof parsed.data === "string" &&
+				parsed.data.startsWith("/9j/")
+			) {
+				// This is JPEG image data
+				return {
+					content: "JPEG image generated successfully",
+					imageData: parsed.data,
+					isImage: true,
+					contentType: "image/jpeg",
+				};
+			}
+
+			// Check for fileData in the response (fallback)
+			if (parsed?.fileData && typeof parsed.fileData === "string") {
+				if (parsed.fileData.startsWith("/9j/")) {
+					// JPEG image data
+					return {
+						content: "JPEG image generated successfully",
+						imageData: parsed.fileData,
+						isImage: true,
+						contentType: "image/jpeg",
+					};
+				} else if (parsed.fileData.startsWith("data:image/")) {
+					// Base64 encoded image with data URL
+					const mimeType =
+						parsed.fileData.match(/data:(.*?);/)?.[1] ||
+						"image/jpeg";
+					return {
+						content: `${mimeType
+							.split("/")[1]
+							.toUpperCase()} image generated successfully`,
+						imageData: parsed.fileData,
+						isImage: true,
+						contentType: mimeType,
+					};
+				}
+			}
+
+			// Handle nested data structure for text responses
 			if (parsed?.data?.data?.choices?.[0]?.message?.content) {
-				return parsed.data.data.choices[0].message.content;
+				return { content: parsed.data.data.choices[0].message.content };
 			}
 			if (parsed?.data?.choices?.[0]?.message?.content) {
-				return parsed.data.choices[0].message.content;
+				return { content: parsed.data.choices[0].message.content };
 			}
 			if (parsed?.data?.message) {
-				return parsed.data.message;
+				return { content: parsed.data.message };
 			}
 			if (parsed?.message) {
-				return parsed.message;
+				return { content: parsed.message };
 			}
-			return null;
+			return { content: null };
 		} catch {
-			return null;
+			return { content: null };
 		}
 	};
 
@@ -196,8 +311,8 @@ export default function AgentChatPage() {
 										const result = parseAgentResponse(
 											subnet.data
 										);
-										if (result) {
-											subnetContent = result;
+										if (result.content) {
+											subnetContent = result.content;
 										} else {
 											subnetContent =
 												"Processing completed";
@@ -206,8 +321,11 @@ export default function AgentChatPage() {
 										subnet.status === "done" &&
 										subnet.data
 									) {
+										const result = parseAgentResponse(
+											subnet.data
+										);
 										subnetContent =
-											parseAgentResponse(subnet.data) ||
+											result.content ||
 											"Processing completed";
 									} else if (
 										subnet.status === "in_progress"
@@ -228,6 +346,11 @@ export default function AgentChatPage() {
 										subnetContent &&
 										subnetContent.trim() !== ""
 									) {
+										// Parse the response to get image data if present
+										const result = parseAgentResponse(
+											subnet.data
+										);
+
 										if (existingMessageIndex >= 0) {
 											// Update existing message
 											updatedMessages[
@@ -238,6 +361,9 @@ export default function AgentChatPage() {
 												],
 												subnetStatus: subnet.status,
 												content: subnetContent,
+												imageData: result.imageData,
+												isImage: result.isImage,
+												contentType: result.contentType,
 											};
 										} else {
 											// Create new message for this subnet
@@ -249,6 +375,9 @@ export default function AgentChatPage() {
 												subnetStatus: subnet.status,
 												toolName: subnet.toolName,
 												subnetIndex: index,
+												imageData: result.imageData,
+												isImage: result.isImage,
+												contentType: result.contentType,
 											};
 
 											updatedMessages.push(newMessage);
@@ -645,8 +774,8 @@ export default function AgentChatPage() {
 										const result = parseAgentResponse(
 											subnet.data
 										);
-										if (result) {
-											subnetContent = result;
+										if (result.content) {
+											subnetContent = result.content;
 										} else {
 											subnetContent =
 												"Processing completed";
@@ -655,8 +784,11 @@ export default function AgentChatPage() {
 										subnet.status === "done" &&
 										subnet.data
 									) {
+										const result = parseAgentResponse(
+											subnet.data
+										);
 										subnetContent =
-											parseAgentResponse(subnet.data) ||
+											result.content ||
 											"Processing completed";
 									} else if (
 										subnet.status === "in_progress"
@@ -677,6 +809,11 @@ export default function AgentChatPage() {
 										subnetContent &&
 										subnetContent.trim() !== ""
 									) {
+										// Parse the response to get image data if present
+										const result = parseAgentResponse(
+											subnet.data
+										);
+
 										if (existingMessageIndex >= 0) {
 											// Update existing message
 											updatedMessages[
@@ -687,6 +824,9 @@ export default function AgentChatPage() {
 												],
 												subnetStatus: subnet.status,
 												content: subnetContent,
+												imageData: result.imageData,
+												isImage: result.isImage,
+												contentType: result.contentType,
 											};
 										} else {
 											// Create new message for this subnet
@@ -698,6 +838,9 @@ export default function AgentChatPage() {
 												subnetStatus: subnet.status,
 												toolName: subnet.toolName,
 												subnetIndex: index,
+												imageData: result.imageData,
+												isImage: result.isImage,
+												contentType: result.contentType,
 											};
 
 											updatedMessages.push(newMessage);

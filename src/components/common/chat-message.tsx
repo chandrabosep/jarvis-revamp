@@ -1,4 +1,5 @@
-import { cn } from "@/lib/utils";
+import { cn, base64ToDataUrl, isImageData } from "@/lib/utils";
+import Image from "next/image";
 
 interface ChatMessageProps {
 	message: {
@@ -22,6 +23,10 @@ interface ChatMessageProps {
 			| "waiting_response";
 		toolName?: string;
 		subnetIndex?: number;
+		// File data fields
+		imageData?: string;
+		isImage?: boolean;
+		contentType?: string;
 	};
 	isLast?: boolean;
 }
@@ -34,6 +39,88 @@ export function ChatMessage({ message, isLast = false }: ChatMessageProps) {
 					<h2 className="text-2xl font-bold text-white leading-tight mb-2 capitalize">
 						{message.content}
 					</h2>
+
+					{/* Display file content if present */}
+					{message.imageData && (
+						<div className="mt-3">
+							{message.isImage ? (
+								// Display image
+								<Image
+									src={base64ToDataUrl(
+										message.imageData,
+										message.contentType || "image/jpeg"
+									)}
+									alt="Generated image"
+									width={400}
+									height={400}
+									className="rounded-lg border border-border max-w-full h-auto"
+									onError={(e) => {
+										console.error(
+											"Failed to load image:",
+											e
+										);
+									}}
+								/>
+							) : (
+								// Display file download link or preview
+								<div className="p-4 border border-border rounded-lg bg-muted/20">
+									<div className="flex items-center gap-3">
+										<div className="p-2 bg-primary/10 rounded-lg">
+											<svg
+												className="w-6 h-6 text-primary"
+												fill="none"
+												stroke="currentColor"
+												viewBox="0 0 24 24"
+											>
+												<path
+													strokeLinecap="round"
+													strokeLinejoin="round"
+													strokeWidth={2}
+													d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+												/>
+											</svg>
+										</div>
+										<div className="flex-1">
+											<p className="text-sm font-medium text-foreground">
+												{message.contentType
+													? message.contentType
+															.split("/")[1]
+															.toUpperCase()
+													: "File"}{" "}
+												generated
+											</p>
+											<p className="text-xs text-muted-foreground">
+												{message.contentType ||
+													"Unknown type"}
+											</p>
+										</div>
+										<button
+											onClick={() => {
+												// Create download link for the file
+												const link =
+													document.createElement("a");
+												link.href = base64ToDataUrl(
+													message.imageData!,
+													message.contentType ||
+														"application/octet-stream"
+												);
+												link.download = `generated_file.${
+													message.contentType?.split(
+														"/"
+													)[1] || "bin"
+												}`;
+												link.click();
+											}}
+											className="px-3 py-1 text-xs bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+										>
+											Download
+										</button>
+									</div>
+								</div>
+							)}
+						</div>
+					)}
+
 					{/* <div className="text-xs text-gray-400">
 						{message.timestamp.toLocaleTimeString([], {
 							hour: "2-digit",
@@ -67,6 +154,88 @@ export function ChatMessage({ message, isLast = false }: ChatMessageProps) {
 					<div className="text-yellow-100 text-sm leading-relaxed">
 						{message.content}
 					</div>
+
+					{/* Display file content if present */}
+					{message.imageData && (
+						<div className="mt-3">
+							{message.isImage ? (
+								// Display image
+								<Image
+									src={base64ToDataUrl(
+										message.imageData,
+										message.contentType || "image/jpeg"
+									)}
+									alt="Generated image"
+									width={400}
+									height={400}
+									className="rounded-lg border border-border max-w-full h-auto"
+									onError={(e) => {
+										console.error(
+											"Failed to load image:",
+											e
+										);
+									}}
+								/>
+							) : (
+								// Display file download link or preview
+								<div className="p-4 border border-border rounded-lg bg-muted/20">
+									<div className="flex items-center gap-3">
+										<div className="p-2 bg-primary/10 rounded-lg">
+											<svg
+												className="w-6 h-6 text-primary"
+												fill="none"
+												stroke="currentColor"
+												viewBox="0 0 24 24"
+											>
+												<path
+													strokeLinecap="round"
+													strokeLinejoin="round"
+													strokeWidth={2}
+													d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+												/>
+											</svg>
+										</div>
+										<div className="flex-1">
+											<p className="text-sm font-medium text-foreground">
+												{message.contentType
+													? message.contentType
+															.split("/")[1]
+															.toUpperCase()
+													: "File"}{" "}
+												generated
+											</p>
+											<p className="text-xs text-muted-foreground">
+												{message.contentType ||
+													"Unknown type"}
+											</p>
+										</div>
+										<button
+											onClick={() => {
+												// Create download link for the file
+												const link =
+													document.createElement("a");
+												link.href = base64ToDataUrl(
+													message.imageData!,
+													message.contentType ||
+														"application/octet-stream"
+												);
+												link.download = `generated_file.${
+													message.contentType?.split(
+														"/"
+													)[1] || "bin"
+												}`;
+												link.click();
+											}}
+											className="px-3 py-1 text-xs bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+										>
+											Download
+										</button>
+									</div>
+								</div>
+							)}
+						</div>
+					)}
+
 					{message.toolName && (
 						<div className="text-xs text-yellow-300/70 mt-2 italic">
 							From {message.toolName} agent
@@ -102,6 +271,88 @@ export function ChatMessage({ message, isLast = false }: ChatMessageProps) {
 					<div className="w-fit px-5 py-0.5 rounded-xl border border-border text-foreground text-sm leading-relaxed whitespace-pre-wrap ">
 						{message.content}
 					</div>
+
+					{/* Display file content if present */}
+					{message.imageData && (
+						<div className="mt-3">
+							{message.isImage ? (
+								// Display image
+								<Image
+									src={base64ToDataUrl(
+										message.imageData,
+										message.contentType || "image/jpeg"
+									)}
+									alt="Generated image"
+									width={400}
+									height={400}
+									className="rounded-lg border border-border max-w-full h-auto"
+									onError={(e) => {
+										console.error(
+											"Failed to load image:",
+											e
+										);
+									}}
+								/>
+							) : (
+								// Display file download link or preview
+								<div className="p-4 border border-border rounded-lg bg-muted/20">
+									<div className="flex items-center gap-3">
+										<div className="p-2 bg-primary/10 rounded-lg">
+											<svg
+												className="w-6 h-6 text-primary"
+												fill="none"
+												stroke="currentColor"
+												viewBox="0 0 24 24"
+											>
+												<path
+													strokeLinecap="round"
+													strokeLinejoin="round"
+													strokeWidth={2}
+													d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+												/>
+											</svg>
+										</div>
+										<div className="flex-1">
+											<p className="text-sm font-medium text-foreground">
+												{message.contentType
+													? message.contentType
+															.split("/")[1]
+															.toUpperCase()
+													: "File"}{" "}
+												generated
+											</p>
+											<p className="text-xs text-muted-foreground">
+												{message.contentType ||
+													"Unknown type"}
+											</p>
+										</div>
+										<button
+											onClick={() => {
+												// Create download link for the file
+												const link =
+													document.createElement("a");
+												link.href = base64ToDataUrl(
+													message.imageData!,
+													message.contentType ||
+														"application/octet-stream"
+												);
+												link.download = `generated_file.${
+													message.contentType?.split(
+														"/"
+													)[1] || "bin"
+												}`;
+												link.click();
+											}}
+											className="px-3 py-1 text-xs bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+										>
+											Download
+										</button>
+									</div>
+								</div>
+							)}
+						</div>
+					)}
+
 					<div className="text-xs text-gray-500 mt-2">
 						{message.timestamp.toLocaleTimeString([], {
 							hour: "2-digit",
@@ -204,6 +455,84 @@ export function ChatMessage({ message, isLast = false }: ChatMessageProps) {
 				<div className="text-gray-200 text-sm leading-relaxed whitespace-pre-wrap">
 					{message.content}
 				</div>
+
+				{/* Display file content if present */}
+				{message.imageData && (
+					<div className="mt-3">
+						{message.isImage ? (
+							// Display image
+							<Image
+								src={base64ToDataUrl(
+									message.imageData,
+									message.contentType || "image/jpeg"
+								)}
+								alt="Generated image"
+								width={400}
+								height={400}
+								className="rounded-lg border border-border max-w-full h-auto"
+								onError={(e) => {
+									console.error("Failed to load image:", e);
+								}}
+							/>
+						) : (
+							// Display file download link or preview
+							<div className="p-4 border border-border rounded-lg bg-muted/20">
+								<div className="flex items-center gap-3">
+									<div className="p-2 bg-primary/10 rounded-lg">
+										<svg
+											className="w-6 h-6 text-primary"
+											fill="none"
+											stroke="currentColor"
+											viewBox="0 0 24 24"
+										>
+											<path
+												strokeLinecap="round"
+												strokeLinejoin="round"
+												strokeWidth={2}
+												d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+											/>
+										</svg>
+									</div>
+									<div className="flex-1">
+										<p className="text-sm font-medium text-foreground">
+											{message.contentType
+												? message.contentType
+														.split("/")[1]
+														.toUpperCase()
+												: "File"}{" "}
+											generated
+										</p>
+										<p className="text-xs text-muted-foreground">
+											{message.contentType ||
+												"Unknown type"}
+										</p>
+									</div>
+									<button
+										onClick={() => {
+											// Create download link for the file
+											const link =
+												document.createElement("a");
+											link.href = base64ToDataUrl(
+												message.imageData!,
+												message.contentType ||
+													"application/octet-stream"
+											);
+											link.download = `generated_file.${
+												message.contentType?.split(
+													"/"
+												)[1] || "bin"
+											}`;
+											link.click();
+										}}
+										className="px-3 py-1 text-xs bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+									>
+										Download
+									</button>
+								</div>
+							</div>
+						)}
+					</div>
+				)}
 
 				<div className="text-xs text-gray-500 mt-2">
 					{message.timestamp.toLocaleTimeString([], {

@@ -40,6 +40,16 @@ const nextConfig: NextConfig = {
 	experimental: {
 		esmExternals: "loose",
 	},
+	// Configure images to allow base64 data URLs
+	images: {
+		remotePatterns: [
+			{
+				protocol: "https",
+				hostname: "**",
+			},
+		],
+		unoptimized: true,
+	},
 	// Add error handling for client-side exceptions
 	onDemandEntries: {
 		// Period (in ms) where the server will keep pages in the buffer
