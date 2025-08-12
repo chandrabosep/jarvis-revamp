@@ -21,16 +21,17 @@ export default function CreatePage() {
 			if (mode === "agent") {
 				if (selectedAgent) {
 					router.push(`/chat/agent/${selectedAgent.id}`);
+				} else {
+					console.log("❌ No selected agent");
 				}
 			} else {
+				console.log("🔄 Navigating to: /chat");
 				router.push("/chat");
 			}
+		} else {
+			console.log("❌ Empty prompt, not navigating");
 		}
 	};
-
-	useEffect(() => {
-		setPrompt("");
-	}, [setPrompt]);
 
 	return (
 		<div className="flex flex-col items-center h-full w-full relative gap-y-20">

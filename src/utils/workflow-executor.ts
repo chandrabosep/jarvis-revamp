@@ -56,17 +56,24 @@ export class WorkflowExecutor {
 		web3Context: Web3Context,
 		onStatusUpdate?: (data: WorkflowExecutionResponse) => void
 	): Promise<boolean> {
+		console.log(
+			`🔧 WorkflowExecutor.startPollingExistingWorkflow called for: ${workflowId}`
+		);
+
 		try {
 			// Get API key
+			console.log("🔑 Getting API key...");
 			const apiKey = await apiKeyManager.getApiKey(
 				skyBrowser,
 				web3Context
 			);
 
 			if (!apiKey) {
-				console.error("Failed to get API key for polling");
+				console.error("❌ Failed to get API key for polling");
 				return false;
 			}
+
+			console.log("✅ API key obtained, starting polling...");
 
 			// Start polling for the existing workflow
 			this.startPolling(workflowId, apiKey, onStatusUpdate);
@@ -77,7 +84,7 @@ export class WorkflowExecutor {
 			return true;
 		} catch (error) {
 			console.error(
-				"Error starting polling for existing workflow:",
+				"❌ Error starting polling for existing workflow:",
 				error
 			);
 			return false;
@@ -446,6 +453,7 @@ export class WorkflowExecutor {
 		apiKey: string,
 		onStatusUpdate?: (data: WorkflowExecutionResponse) => void
 	): void {
+		console.log(`🔄 Starting polling for workflow: ${requestId}`);
 		// Store the current workflow ID
 		this.currentWorkflowId = requestId;
 
@@ -459,6 +467,7 @@ export class WorkflowExecutor {
 
 		console.log(`🔄 Creating polling interval for workflow: ${requestId}`);
 		this.currentPollingInterval = setInterval(async () => {
+			console.log(`🔍 Polling tick for workflow: ${requestId}`);
 			try {
 				const statusEndpoint = `${WORKFLOW_ENDPOINTS.FULL_WORKFLOW_STATUS}/${requestId}`;
 

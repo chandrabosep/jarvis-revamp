@@ -131,7 +131,8 @@ export default function AgentChatPage() {
 		async (workflowId: string) => {
 			if (!skyBrowser || !address) {
 				console.warn(
-					"Cannot start polling: missing skyBrowser or address"
+					"Cannot start polling: missing skyBrowser or address",
+					{ skyBrowser: !!skyBrowser, address: !!address }
 				);
 				return;
 			}
@@ -147,11 +148,32 @@ export default function AgentChatPage() {
 
 				// Create status update callback for existing workflow
 				const onStatusUpdate = (data: any) => {
+					console.log("📊 Status update received:", data);
 					setCurrentWorkflowData(data);
 
 					if (data?.requestId && !currentWorkflowId) {
 						setCurrentWorkflowId(data.requestId);
 						workflowExecutor.setCurrentWorkflowId(data.requestId);
+					}
+
+					// Check if we have userPrompt in the data and no existing user message
+					if (data?.userPrompt && data.userPrompt.trim().length > 0) {
+						setChatMessages((prevMessages) => {
+							// Check if we already have a user message (avoid duplicates)
+							const hasUserMessage = prevMessages.some(
+								(msg) => msg.type === "user"
+							);
+							if (!hasUserMessage) {
+								const userMessage: ChatMsg = {
+									id: `user_${Date.now()}`,
+									type: "user",
+									content: data.userPrompt,
+									timestamp: new Date(),
+								};
+								return [userMessage, ...prevMessages];
+							}
+							return prevMessages;
+						});
 					}
 
 					// Use the same status update logic as in handlePromptSubmit
@@ -909,10 +931,6 @@ export default function AgentChatPage() {
 						"Failed to start polling for existing workflow"
 					);
 				}
-
-				console.log(
-					`✅ Started polling for existing workflow: ${workflowId}`
-				);
 			} catch (error) {
 				console.error(
 					"Error starting polling for existing workflow:",
@@ -924,17 +942,7 @@ export default function AgentChatPage() {
 				setError("Failed to load workflow");
 			}
 		},
-		[
-			skyBrowser,
-			address,
-			currentWorkflowId,
-			subnetPreviousStatus,
-			postFeedbackProcessing,
-			feedbackGivenForSubnet,
-			preFeedbackContent,
-			setPollingStatus,
-			stopCurrentExecution,
-		]
+		[skyBrowser, address, setPollingStatus, stopCurrentExecution]
 	);
 
 	const handleModeChange = (newMode: "chat" | "agent") => {
@@ -1741,6 +1749,8 @@ export default function AgentChatPage() {
 						// Clear all feedback tracking when workflow completes
 						setFeedbackGivenForSubnet(new Set());
 						setPostFeedbackProcessing(new Map() as any);
+						// Clear prompt when workflow completes successfully
+						setPrompt("");
 
 						const completionMessage: ChatMsg = {
 							id: `completion_${Date.now()}`,
@@ -1805,6 +1815,12 @@ export default function AgentChatPage() {
 
 			setCurrentWorkflowId(workflowId);
 			workflowExecutor.setCurrentWorkflowId(workflowId);
+
+			// Add workflowId to URL for consistent behavior
+			const currentUrl = new URL(window.location.href);
+			currentUrl.searchParams.set("workflowId", workflowId);
+			window.history.replaceState({}, "", currentUrl.toString());
+
 			setPrompt("");
 		} catch (error) {
 			console.error("Error executing workflow:", error);
@@ -2418,18 +2434,15 @@ export default function AgentChatPage() {
 
 	// Handle URL workflow ID - start polling for existing workflow
 	useEffect(() => {
-		if (isLoading) return;
-		if (!selectedAgent || selectedAgent.id !== agentId) return;
-		if (!skyBrowser || !address) return;
+		// Skip if still loading
+		if (isLoading || !skyBrowser || !address) {
+			return;
+		}
 
 		// Check if we have a workflowId in the URL
 		if (urlWorkflowId && urlWorkflowId.trim().length > 0) {
 			// If the URL workflow ID is different from the current one, switch to the new workflow
 			if (currentWorkflowId !== urlWorkflowId) {
-				console.log(
-					`🔄 Found different workflowId in URL: ${urlWorkflowId} (current: ${currentWorkflowId}), switching workflows...`
-				);
-
 				// Stop any existing polling first
 				if (currentWorkflowId) {
 					workflowExecutor.clearCurrentWorkflow();
@@ -2447,14 +2460,10 @@ export default function AgentChatPage() {
 				setPreFeedbackContent(new Map());
 				setPendingNotifications([]);
 
-				// Start polling for the new workflow
 				startPollingExistingWorkflow(urlWorkflowId);
 			}
 		} else if (currentWorkflowId && !urlWorkflowId) {
 			// If there's no workflow ID in URL but we have a current workflow, clear everything
-			console.log(
-				"🧹 No workflowId in URL, clearing current workflow state..."
-			);
 			workflowExecutor.clearCurrentWorkflow();
 			setChatMessages([]);
 			setCurrentWorkflowData(null);
@@ -2468,23 +2477,30 @@ export default function AgentChatPage() {
 			setPreFeedbackContent(new Map());
 			setPendingNotifications([]);
 		}
-	}, [
-		isLoading,
-		selectedAgent,
-		agentId,
-		skyBrowser,
-		address,
-		urlWorkflowId,
-		currentWorkflowId,
-		startPollingExistingWorkflow,
-	]);
+	}, [isLoading, skyBrowser, address, urlWorkflowId, currentWorkflowId]);
 
 	// Auto-submit prompt after navigation from create page once everything is ready
 	useEffect(() => {
-		if (isLoading) return;
-		if (hasAutoSubmittedRef.current) return;
-		if (urlWorkflowId) return; // Don't auto-submit if we have a workflow ID in URL
-		if (
+		if (isLoading) {
+			return;
+		}
+		if (hasAutoSubmittedRef.current) {
+			// If we already auto-submitted but the prompt is empty, reset the flag
+			if (!prompt || prompt.trim().length === 0) {
+				hasAutoSubmittedRef.current = false;
+			} else {
+				return;
+			}
+		}
+		if (urlWorkflowId) {
+			return;
+		}
+		if (isExecuting && currentWorkflowId) {
+			return;
+		}
+
+		// Check if all conditions are met for auto-submit
+		const canAutoSubmit =
 			selectedAgent &&
 			selectedAgent.id === agentId &&
 			prompt &&
@@ -2493,14 +2509,18 @@ export default function AgentChatPage() {
 			address &&
 			!isExecuting &&
 			!isSubmittingFeedback &&
-			chatMessages.length === 0
-		) {
+			chatMessages.length === 0;
+
+		if (canAutoSubmit) {
 			hasAutoSubmittedRef.current = true;
-			handlePromptSubmit(prompt);
+			// Small delay to ensure navigation is complete
+			setTimeout(() => {
+				handlePromptSubmit(prompt);
+			}, 100);
 		}
 	}, [
 		isLoading,
-		selectedAgent,
+		selectedAgent?.id,
 		agentId,
 		prompt,
 		skyBrowser,
@@ -2509,6 +2529,7 @@ export default function AgentChatPage() {
 		isSubmittingFeedback,
 		chatMessages.length,
 		urlWorkflowId,
+		currentWorkflowId,
 	]);
 
 	useEffect(() => {

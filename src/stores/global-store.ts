@@ -45,9 +45,25 @@ export const useGlobalStore = create<GlobalStore>()(
 				setAccountNFTId: (nftId) => set({ accountNFTId: nftId }),
 
 				// Mode Management Actions
-				setMode: (mode) => set({ mode }),
-				setPrompt: (prompt) => set({ prompt }),
-				setSelectedAgent: (agent) => set({ selectedAgent: agent }),
+				setMode: (mode) => {
+					console.log("🔧 Global Store: Setting mode to:", mode);
+					set({ mode });
+				},
+				setPrompt: (prompt) => {
+					console.log(
+						"🔧 Global Store: Setting prompt to:",
+						`"${prompt}"`
+					);
+					set({ prompt });
+				},
+				setSelectedAgent: (agent) => {
+					console.log(
+						"🔧 Global Store: Setting selected agent to:",
+						agent?.name,
+						agent?.id
+					);
+					set({ selectedAgent: agent });
+				},
 
 				// Reset
 				reset: () =>
@@ -65,6 +81,8 @@ export const useGlobalStore = create<GlobalStore>()(
 					userAddress: state.userAddress,
 					accountNFTId: state.accountNFTId,
 					prompt: state.prompt,
+					selectedAgent: state.selectedAgent,
+					mode: state.mode,
 				}),
 			}
 		)
