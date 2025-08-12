@@ -150,3 +150,6 @@ body {
 	}
 }
 
+.spline-watermark, .spline-logo {
+	display: none !important;
+  }

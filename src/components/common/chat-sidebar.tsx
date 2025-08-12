@@ -229,7 +229,7 @@ const ChatSidebar = React.memo(() => {
 			onMouseEnter={handleMouseEnter}
 			onMouseLeave={handleMouseLeave}
 		>
-			<SidebarContent className="w-full  overflow-hidden ">
+			<SidebarContent className="w-full  overflow-hidden z-50">
 				<SidebarHeader>
 					<SidebarMenu className="w-full px-1">
 						<SidebarMenuItem

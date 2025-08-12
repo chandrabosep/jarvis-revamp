@@ -48,6 +48,43 @@ export class WorkflowExecutor {
 	}
 
 	/**
+	 * Start polling for an existing workflow
+	 */
+	public async startPollingExistingWorkflow(
+		workflowId: string,
+		skyBrowser: SkyMainBrowser,
+		web3Context: Web3Context,
+		onStatusUpdate?: (data: WorkflowExecutionResponse) => void
+	): Promise<boolean> {
+		try {
+			// Get API key
+			const apiKey = await apiKeyManager.getApiKey(
+				skyBrowser,
+				web3Context
+			);
+
+			if (!apiKey) {
+				console.error("Failed to get API key for polling");
+				return false;
+			}
+
+			// Start polling for the existing workflow
+			this.startPolling(workflowId, apiKey, onStatusUpdate);
+
+			console.log(
+				`✅ Started polling for existing workflow: ${workflowId}`
+			);
+			return true;
+		} catch (error) {
+			console.error(
+				"Error starting polling for existing workflow:",
+				error
+			);
+			return false;
+		}
+	}
+
+	/**
 	 * Check if polling is currently active
 	 */
 	public isPolling(): boolean {
