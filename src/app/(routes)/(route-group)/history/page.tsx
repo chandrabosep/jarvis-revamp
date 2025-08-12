@@ -3,23 +3,20 @@
 import {
 	type ColumnDef,
 	getCoreRowModel,
-	getFilteredRowModel,
-	getPaginationRowModel,
 	useReactTable,
 } from "@tanstack/react-table";
-import { Filter, Search, ChevronLeft, ChevronRight } from "lucide-react";
-import React, { useState, useEffect, useCallback } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/components/ui/table";
+	Filter,
+	Search,
+	Clock,
+	CheckCircle,
+	XCircle,
+	TimerIcon,
+} from "lucide-react";
+import React, { useState, useEffect, useCallback } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -30,6 +27,9 @@ import {
 import { getHistory } from "@/controllers/requests";
 import { useWallet } from "@/hooks/use-wallet";
 import { HistoryItem } from "@/types";
+import DataTable from "@/components/table/DataTable";
+import DataPagination from "@/components/common/pagination";
+import SearchBar from "@/components/common/search";
 
 const getStatusBadge = (status: string) => {
 	const statusConfig = {
@@ -94,18 +94,39 @@ const formatLastUpdated = (updatedAt: string) => {
 };
 
 export default function WorkflowHistory() {
+	// URL state management
+	const router = useRouter();
+	const searchParams = useSearchParams();
+	const currentPage = Number(searchParams.get("page") || "1");
+	const searchTerm = searchParams.get("search") || "";
+	const statusParam = searchParams.get("status") || "";
+
 	// State management
 	const [workflows, setWorkflows] = useState<HistoryItem[]>([]);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
-	const [statusFilter, setStatusFilter] = useState<string[]>([]);
-	const [page, setPage] = useState(0);
-	const [pageSize, setPageSize] = useState(10);
+	const [statusFilter, setStatusFilter] = useState<string[]>(
+		statusParam ? [statusParam] : []
+	);
+	const pageSize = 10;
 	const [totalCount, setTotalCount] = useState(0);
-	const [search, setSearch] = useState("");
+	const [search, setSearch] = useState(searchTerm);
 
 	// Wallet hook
 	const { skyBrowser, address } = useWallet();
+
+	// Update URL params helper
+	const updateSearchParams = (updates: Record<string, string | null>) => {
+		const newParams = new URLSearchParams(searchParams);
+		Object.entries(updates).forEach(([key, value]) => {
+			if (value) {
+				newParams.set(key, value);
+			} else {
+				newParams.delete(key);
+			}
+		});
+		router.push(`/history?${newParams.toString()}`);
+	};
 
 	// Fetch history function
 	const fetchHistory = useCallback(async () => {
@@ -122,7 +143,7 @@ export default function WorkflowHistory() {
 			const web3Context = { address };
 			const response = await getHistory(
 				{
-					page: page + 1, // API uses 1-based indexing
+					page: currentPage,
 					limit: pageSize,
 					status:
 						statusFilter.length > 0
@@ -144,17 +165,27 @@ export default function WorkflowHistory() {
 			let newTotalCount = 0;
 
 			if (response.workflows && Array.isArray(response.workflows)) {
-				newWorkflows = response.workflows;
+				// New API format: direct workflows array with pagination object
+				newWorkflows = response.workflows.map((workflow: any) => ({
+					...workflow,
+					id: workflow.id || workflow.requestId, // Ensure id field exists
+				}));
 				newTotalCount =
-					response.totalCount || response.workflows.length;
+					response.pagination?.total || response.workflows.length;
 			} else if (response.success && response.data?.requests) {
+				// Legacy format: nested in data.requests
 				newWorkflows = response.data.requests;
 				newTotalCount =
-					response.data.totalCount || response.data.requests.length;
+					response.data.pagination?.total ||
+					response.data.totalCount ||
+					response.data.requests.length;
 			} else if (response.data?.requests) {
+				// Another legacy format variation
 				newWorkflows = response.data.requests;
 				newTotalCount =
-					response.data.totalCount || response.data.requests.length;
+					response.data.pagination?.total ||
+					response.data.totalCount ||
+					response.data.requests.length;
 			}
 
 			setWorkflows(newWorkflows);
@@ -167,14 +198,47 @@ export default function WorkflowHistory() {
 		} finally {
 			setLoading(false);
 		}
-	}, [skyBrowser, address, page, pageSize, statusFilter]);
+	}, [skyBrowser, address, currentPage, pageSize, statusFilter]);
+
+	// Handle search functionality
+	const handleSearch = (value: string) => {
+		setSearch(value);
+		updateSearchParams({ search: value || null, page: "1" });
+	};
+
+	// Handle status filter changes
+	const handleStatusFilterChange = (status: string, checked: boolean) => {
+		let newStatusFilter: string[];
+		if (checked) {
+			newStatusFilter = [...statusFilter, status];
+		} else {
+			newStatusFilter = statusFilter.filter((s: string) => s !== status);
+		}
+		setStatusFilter(newStatusFilter);
+		updateSearchParams({
+			status: newStatusFilter.length > 0 ? newStatusFilter[0] : null,
+			page: "1",
+		});
+	};
+
+	// Handle clear filters
+	const handleClearFilters = () => {
+		setStatusFilter([]);
+		updateSearchParams({ status: null, page: "1" });
+	};
+
+	// Sync local state with URL parameters
+	useEffect(() => {
+		setSearch(searchTerm);
+		setStatusFilter(statusParam ? [statusParam] : []);
+	}, [searchTerm, statusParam]);
 
 	// Fetch history when dependencies change
 	useEffect(() => {
 		fetchHistory();
 	}, [fetchHistory]);
 
-	// Filter workflows based on search
+	// Filter workflows based on search (client-side since API doesn't support search)
 	const filteredWorkflows = React.useMemo(() => {
 		if (!search.trim()) return workflows;
 
@@ -187,10 +251,15 @@ export default function WorkflowHistory() {
 		);
 	}, [workflows, search]);
 
-	const columns: ColumnDef<any>[] = [
+	const columns: ColumnDef<HistoryItem>[] = [
 		{
 			accessorKey: "userPrompt",
-			header: "Workflow",
+			header: () => (
+				<div className="text-gray-400 font-semibold flex items-center gap-2 min-w-24">
+					<Clock className="size-4" />
+					<span>Workflow</span>
+				</div>
+			),
 			cell: ({ row }) => (
 				<div className="max-w-[300px]">
 					<span className="text-sm text-gray-300 truncate block">
@@ -201,16 +270,22 @@ export default function WorkflowHistory() {
 		},
 		{
 			accessorKey: "status",
-			header: "Status",
+			header: () => (
+				<div className="text-gray-400 font-semibold flex items-center gap-2 min-w-24">
+					<CheckCircle className="size-4" />
+					<span>Status</span>
+				</div>
+			),
 			cell: ({ row }) => getStatusBadge(row.original.status),
-			filterFn: (row, id, value) => {
-				if (!value || value.length === 0) return true;
-				return value.includes(row.getValue(id));
-			},
 		},
 		{
 			accessorKey: "updatedAt",
-			header: "Last Updated",
+			header: () => (
+				<div className="text-gray-400 font-semibold flex items-center gap-2 min-w-24">
+					<TimerIcon className="size-4" />
+					<span>Last Updated</span>
+				</div>
+			),
 			cell: ({ row }) => (
 				<span className="text-sm text-gray-400">
 					{formatLastUpdated(row.original.updatedAt)}
@@ -219,7 +294,12 @@ export default function WorkflowHistory() {
 		},
 		{
 			accessorKey: "duration",
-			header: "Duration",
+			header: () => (
+				<div className="text-gray-400 font-semibold flex items-center gap-2 min-w-24">
+					<Clock className="size-4" />
+					<span>Duration</span>
+				</div>
+			),
 			cell: ({ row }) => (
 				<span className="text-sm text-gray-400">
 					{formatDuration(
@@ -237,27 +317,15 @@ export default function WorkflowHistory() {
 		data: filteredWorkflows,
 		columns,
 		getCoreRowModel: getCoreRowModel(),
-		getFilteredRowModel: getFilteredRowModel(),
-		getPaginationRowModel: getPaginationRowModel(),
-		state: {
-			pagination: {
-				pageIndex: page,
-				pageSize: pageSize,
-			},
-		},
-		manualPagination: true,
-		pageCount: Math.ceil(filteredWorkflows.length / pageSize),
-		manualFiltering: true,
-		enableGlobalFilter: true,
 	});
 
-	React.useEffect(() => {
-		table.setPageIndex(page);
-		table.setPageSize(pageSize);
-	}, [page, pageSize]);
+	const effectiveTotal = search.trim()
+		? filteredWorkflows.length
+		: totalCount;
+	const maxPages = Math.ceil(effectiveTotal / pageSize);
 
 	return (
-		<div className=" min-h-screen p-6">
+		<div className="p-6">
 			<div className="max-w-7xl mx-auto">
 				{/* Header */}
 				<div className="mb-6">
@@ -269,21 +337,18 @@ export default function WorkflowHistory() {
 							<DropdownMenuTrigger asChild>
 								<Button
 									variant="outline"
-									className="bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700"
+									className="bg-background border border-border rounded-md text-gray-300"
 								>
 									<Filter className="w-4 h-4 mr-2" />
 									Filter
 									{hasActiveFilters && (
-										<Badge
-											variant="secondary"
-											className="ml-2 bg-blue-600 text-white"
-										>
+										<div className="bg-blue-600 px-2 py-0.5 rounded-md text-white flex items-center justify-center">
 											{statusFilter.length}
-										</Badge>
+										</div>
 									)}
 								</Button>
 							</DropdownMenuTrigger>
-							<DropdownMenuContent className="bg-gray-800 border-gray-700">
+							<DropdownMenuContent className="bg-background border border-border rounded-md">
 								<div className="p-2">
 									<div className="text-sm font-medium text-gray-300 mb-2">
 										Status
@@ -302,22 +367,12 @@ export default function WorkflowHistory() {
 											onCheckedChange={(
 												checked: boolean
 											) => {
-												if (checked) {
-													setStatusFilter([
-														...statusFilter,
-														status,
-													]);
-												} else {
-													setStatusFilter(
-														statusFilter.filter(
-															(s: string) =>
-																s !== status
-														)
-													);
-												}
-												setPage(0);
+												handleStatusFilterChange(
+													status,
+													checked
+												);
 											}}
-											className="text-gray-300 focus:bg-gray-700"
+											className="text-gray-300 hover:bg-background/50"
 										>
 											{status.replace("_", " ")}
 										</DropdownMenuCheckboxItem>
@@ -327,11 +382,8 @@ export default function WorkflowHistory() {
 									<>
 										<div className="border-t border-gray-700 my-1" />
 										<DropdownMenuItem
-											onClick={() => {
-												setStatusFilter([]);
-												setPage(0);
-											}}
-											className="text-gray-300 focus:bg-gray-700"
+											onClick={handleClearFilters}
+											className="text-gray-300 hover:bg-background/50"
 										>
 											Clear filters
 										</DropdownMenuItem>
@@ -341,21 +393,17 @@ export default function WorkflowHistory() {
 						</DropdownMenu>
 
 						{/* Search - Right Side */}
-						<div className="relative">
-							<Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-							<Input
-								placeholder="Search"
-								value={search}
-								onChange={(e) => {
-									setSearch(e.target.value);
-									setPage(0);
-								}}
-								className="pl-10 bg-gray-800 border-gray-700 text-white placeholder-gray-400 focus:border-gray-600 w-64"
-							/>
-						</div>
+						<SearchBar
+							value={search}
+							onChange={setSearch}
+							onSearch={handleSearch}
+							className="w-64 bg-background border border-border rounded-md"
+							placeholder="Search workflows..."
+							debounceTime={300}
+						/>
 					</div>
 				</div>
-				
+
 				{/* Active Filters */}
 				{hasActiveFilters && (
 					<div className="mb-4 text-sm text-gray-400">
@@ -367,175 +415,17 @@ export default function WorkflowHistory() {
 				)}
 
 				{/* Table */}
-				<div className="rounded-lg overflow-hidden">
-					<Table>
-						<TableHeader>
-							<TableRow className="border-gray-700 hover:bg-gray-800">
-								{table.getHeaderGroups().map((headerGroup) =>
-									headerGroup.headers.map((header) => (
-										<TableHead
-											key={header.id}
-											className="text-gray-400 font-medium py-4 px-6"
-										>
-											{header.isPlaceholder
-												? null
-												: typeof header.column.columnDef
-														.header === "function"
-												? header.column.columnDef.header(
-														header.getContext()
-												  )
-												: header.column.columnDef
-														.header}
-										</TableHead>
-									))
-								)}
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{!loading && filteredWorkflows.length ? (
-								table.getRowModel().rows.map((row) => (
-									<TableRow
-										key={row.id}
-										className="border-gray-700 hover:bg-gray-750"
-									>
-										{row.getVisibleCells().map((cell) => (
-											<TableCell
-												key={cell.id}
-												className="py-4 px-6"
-											>
-												{typeof cell.column.columnDef
-													.cell === "function"
-													? cell.column.columnDef.cell(
-															cell.getContext()
-													  )
-													: (cell.getValue() as React.ReactNode)}
-											</TableCell>
-										))}
-									</TableRow>
-								))
-							) : !loading ? (
-								<TableRow>
-									<TableCell
-										colSpan={columns.length}
-										className="h-24 text-center text-gray-400"
-									>
-										No workflows found.
-									</TableCell>
-								</TableRow>
-							) : null}
-						</TableBody>
-					</Table>
-				</div>
-
-				{/* Pagination */}
-				<div className="flex items-center justify-between mt-6">
-					<div className="text-sm text-gray-400">
-						Showing{" "}
-						{filteredWorkflows.length === 0
-							? 0
-							: page * pageSize + 1}{" "}
-						to{" "}
-						{Math.min(
-							(page + 1) * pageSize,
-							filteredWorkflows.length
-						)}{" "}
-						of {filteredWorkflows.length} results
-					</div>
-
-					<div className="flex items-center gap-2">
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={() =>
-								setPage((prev: number) => Math.max(prev - 1, 0))
-							}
-							disabled={page === 0 || loading}
-							className="bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 disabled:opacity-50"
-						>
-							<ChevronLeft className="w-4 h-4 mr-1" />
-							Previous
-						</Button>
-
-						<div className="flex items-center gap-1">
-							{(() => {
-								const pageCount = Math.ceil(
-									filteredWorkflows.length / pageSize
-								);
-								const current = page + 1;
-								const pages: number[] = [];
-								for (let i = 1; i <= pageCount; i++) {
-									if (
-										i === 1 ||
-										i === pageCount ||
-										Math.abs(i - current) <= 1
-									) {
-										pages.push(i);
-									}
-								}
-								let lastPage = 0;
-								return pages.map((page, idx) => {
-									const items = [];
-									if (page - lastPage > 1 && idx > 0) {
-										items.push(
-											<span
-												key={`ellipsis-${page}`}
-												className="text-gray-400 px-2"
-											>
-												...
-											</span>
-										);
-									}
-									items.push(
-										<Button
-											key={page}
-											variant={
-												current === page
-													? "default"
-													: "outline"
-											}
-											size="sm"
-											onClick={() => setPage(page - 1)}
-											className={
-												current === page
-													? "bg-blue-600 text-white hover:bg-blue-700"
-													: "bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700"
-											}
-											disabled={loading}
-										>
-											{page}
-										</Button>
-									);
-									lastPage = page;
-									return items;
-								});
-							})()}
-						</div>
-
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={() =>
-								setPage((prev: number) =>
-									prev + 1 <
-									Math.ceil(
-										filteredWorkflows.length / pageSize
-									)
-										? prev + 1
-										: prev
-								)
-							}
-							disabled={
-								page + 1 >=
-									Math.ceil(
-										filteredWorkflows.length / pageSize
-									) || loading
-							}
-							className="bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 disabled:opacity-50"
-						>
-							Next
-							<ChevronRight className="w-4 h-4 ml-1" />
-						</Button>
-					</div>
+				<div className="space-y-4">
+					<DataTable
+						table={table}
+						columns={columns}
+						isLoading={loading}
+					/>
+					<DataPagination
+						maxPages={maxPages}
+						total={effectiveTotal}
+						currentLocation="/history"
+					/>
 				</div>
 			</div>
 		</div>
