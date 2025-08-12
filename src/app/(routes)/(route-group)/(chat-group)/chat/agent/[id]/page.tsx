@@ -336,6 +336,7 @@ export default function AgentChatPage() {
 							prev: string | undefined;
 							current: string;
 							isRegenerating: boolean;
+							isShowingQuestion: boolean;
 						}
 					> = new Map();
 
@@ -344,11 +345,15 @@ export default function AgentChatPage() {
 						const isRegenerating =
 							prevStatus === "waiting_response" &&
 							subnet.status === "in_progress";
+						const isShowingQuestion =
+							prevStatus === "in_progress" &&
+							subnet.status === "waiting_response";
 
 						statusTransitions.set(index, {
 							prev: prevStatus,
 							current: subnet.status,
 							isRegenerating,
+							isShowingQuestion,
 						});
 
 						// Update tracking states
@@ -361,6 +366,12 @@ export default function AgentChatPage() {
 							);
 							setFeedbackGivenForSubnet((prev) =>
 								new Set(prev).add(index)
+							);
+						}
+
+						if (isShowingQuestion) {
+							console.log(
+								`Subnet ${index} transitioning from in_progress to waiting_response - will show question UI with new data`
 							);
 						}
 
@@ -380,6 +391,8 @@ export default function AgentChatPage() {
 							const transition = statusTransitions.get(index);
 							const isRegenerating =
 								transition?.isRegenerating || false;
+							const isShowingQuestion =
+								transition?.isShowingQuestion || false;
 
 							// Find existing message for this subnet
 							let existingMessageIndex =
@@ -400,6 +413,61 @@ export default function AgentChatPage() {
 									);
 								}
 							} else if (subnet.status === "in_progress") {
+								// Always remove ALL feedback-related UI when status becomes in_progress
+								// This includes feedback questions, user answers, submissions, etc.
+								updatedMessages = updatedMessages.filter(
+									(msg) => {
+										// Remove feedback-related messages for this subnet
+										if (
+											msg.type === "answer" &&
+											msg.subnetIndex === index
+										) {
+											return false;
+										}
+										// Remove feedback questions/prompts for this subnet
+										if (
+											(msg.type === "question" ||
+												msg.type === "notification") &&
+											msg.questionData?.itemID ===
+												subnet.itemID
+										) {
+											return false;
+										}
+										// Remove user answer inputs for this subnet
+										if (
+											msg.answer &&
+											msg.subnetIndex === index
+										) {
+											return false;
+										}
+										// Remove any messages that contain feedback submission confirmations or user inputs
+										if (
+											msg.content?.includes(
+												"Feedback submitted successfully"
+											) ||
+											msg.content?.includes("feedback") ||
+											msg.content?.includes(
+												"submitted successfully"
+											) ||
+											msg.content?.includes(
+												"How do you like the result"
+											) ||
+											msg.content?.includes(
+												"pixelated"
+											) ||
+											msg.content?.includes(
+												"Yes, proceed"
+											) ||
+											msg.content?.includes(
+												"Provide feedback"
+											)
+										) {
+											return false;
+										}
+										return true;
+									}
+								);
+
 								// Check if this is processing after feedback (detected by transition)
 								const isProcessingAfterFeedback =
 									isRegenerating ||
@@ -410,16 +478,37 @@ export default function AgentChatPage() {
 									console.log(
 										`Showing processing after feedback for subnet ${index}`
 									);
-									// Processing after feedback - hide the original and show processing message
-									// Remove ALL previous messages for this subnet (including data messages)
+									// Processing after feedback - remove ALL previous content including questions
 									updatedMessages = updatedMessages.filter(
-										(msg) =>
-											!(
+										(msg) => {
+											// Remove old subnet messages
+											if (
 												msg.type ===
 													"workflow_subnet" &&
 												msg.subnetIndex === index &&
 												!msg.isRegenerated
-											)
+											) {
+												return false;
+											}
+											// Remove old questions/notifications for this subnet
+											if (
+												(msg.type === "question" ||
+													msg.type ===
+														"notification") &&
+												msg.questionData?.itemID ===
+													subnet.itemID
+											) {
+												return false;
+											}
+											// Remove old answers for this subnet
+											if (
+												msg.type === "answer" &&
+												msg.subnetIndex === index
+											) {
+												return false;
+											}
+											return true;
+										}
 									);
 
 									// Add processing message at the bottom
@@ -603,6 +692,37 @@ export default function AgentChatPage() {
 									);
 								}
 
+								// If transitioning from in_progress to waiting_response, remove old content
+								if (isShowingQuestion) {
+									console.log(
+										`Removing old content for subnet ${index} before showing new data and question`
+									);
+									// Remove ALL previous messages for this subnet (including old data and questions)
+									updatedMessages = updatedMessages.filter(
+										(msg) => {
+											// Remove old subnet messages
+											if (
+												msg.type ===
+													"workflow_subnet" &&
+												msg.subnetIndex === index
+											) {
+												return false;
+											}
+											// Remove old questions/notifications for this subnet
+											if (
+												(msg.type === "question" ||
+													msg.type ===
+														"notification") &&
+												msg.questionData?.itemID ===
+													subnet.itemID
+											) {
+												return false;
+											}
+											return true;
+										}
+									);
+								}
+
 								// First, handle the data if it exists
 								if (subnet.data) {
 									const result = parseAgentResponse(
@@ -651,28 +771,34 @@ export default function AgentChatPage() {
 										contentHash: createContentHash(result),
 									};
 
-									// Find if we already have a data message for this subnet
-									const existingDataIndex =
-										updatedMessages.findIndex(
-											(msg) =>
-												msg.type ===
-													"workflow_subnet" &&
-												msg.subnetIndex === index &&
-												msg.sourceId?.includes(
-													"_data"
-												) &&
-												!msg.isRegenerated
-										);
-
-									if (existingDataIndex >= 0) {
-										updatedMessages[existingDataIndex] =
-											dataMessage;
-									} else if (existingMessageIndex >= 0) {
-										// Replace the existing subnet message with data message
-										updatedMessages[existingMessageIndex] =
-											dataMessage;
-									} else {
+									// If showing question (transitioning from in_progress), always add new message
+									if (isShowingQuestion) {
 										updatedMessages.push(dataMessage);
+									} else {
+										// Find if we already have a data message for this subnet
+										const existingDataIndex =
+											updatedMessages.findIndex(
+												(msg) =>
+													msg.type ===
+														"workflow_subnet" &&
+													msg.subnetIndex === index &&
+													msg.sourceId?.includes(
+														"_data"
+													) &&
+													!msg.isRegenerated
+											);
+
+										if (existingDataIndex >= 0) {
+											updatedMessages[existingDataIndex] =
+												dataMessage;
+										} else if (existingMessageIndex >= 0) {
+											// Replace the existing subnet message with data message
+											updatedMessages[
+												existingMessageIndex
+											] = dataMessage;
+										} else {
+											updatedMessages.push(dataMessage);
+										}
 									}
 								} else {
 									// No data yet, just show waiting status
@@ -687,7 +813,10 @@ export default function AgentChatPage() {
 										sourceId: sourceId,
 									};
 
-									if (existingMessageIndex >= 0) {
+									if (isShowingQuestion) {
+										// Always add new waiting message when showing question
+										updatedMessages.push(waitingMessage);
+									} else if (existingMessageIndex >= 0) {
 										updatedMessages[existingMessageIndex] =
 											waitingMessage;
 									} else {
@@ -705,18 +834,24 @@ export default function AgentChatPage() {
 										subnet.itemID
 									}_${Date.now()}`;
 
-									// Check if we already have this exact question
+									// Check if we already have this exact question (but not when showing new question)
 									const existingQuestionIndex =
-										updatedMessages.findIndex(
-											(msg) =>
-												(msg.type === "question" ||
-													msg.type ===
-														"notification") &&
-												msg.questionData?.text ===
-													questionText &&
-												msg.questionData?.itemID ===
-													subnet.question.itemID
-										);
+										isShowingQuestion
+											? -1
+											: updatedMessages.findIndex(
+													(msg) =>
+														(msg.type ===
+															"question" ||
+															msg.type ===
+																"notification") &&
+														msg.questionData
+															?.text ===
+															questionText &&
+														msg.questionData
+															?.itemID ===
+															subnet.question
+																.itemID
+											  );
 
 									if (existingQuestionIndex === -1) {
 										// Add new question/notification
