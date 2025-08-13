@@ -345,17 +345,63 @@ export function ChatMessage({
 											const questionText =
 												message.questionData?.text ||
 												message.content;
+											console.log(
+												"Auth button clicked - questionText:",
+												questionText
+											);
+
 											const authUrlMatch =
 												questionText.match(
 													/Auth URL:\s*(https?:\/\/[^\s]+)/
 												);
+											console.log(
+												"Auth URL match result:",
+												authUrlMatch
+											);
+
 											if (authUrlMatch) {
 												const authUrl = authUrlMatch[1];
+												console.log(
+													"Opening auth URL:",
+													authUrl
+												);
 												window.open(
 													authUrl,
 													"_blank",
 													"noopener,noreferrer"
 												);
+											} else {
+												console.log(
+													"No Auth URL found in message content"
+												);
+												// Try alternative patterns
+												const altUrlMatch1 =
+													questionText.match(
+														/https?:\/\/[^\s]+/
+													);
+												const altUrlMatch2 =
+													questionText.match(
+														/URL:\s*(https?:\/\/[^\s]+)/
+													);
+												console.log(
+													"Alternative URL patterns:",
+													{
+														altUrlMatch1,
+														altUrlMatch2,
+													}
+												);
+
+												if (altUrlMatch1) {
+													console.log(
+														"Found URL with alternative pattern:",
+														altUrlMatch1[0]
+													);
+													window.open(
+														altUrlMatch1[0],
+														"_blank",
+														"noopener,noreferrer"
+													);
+												}
 											}
 										}}
 										variant="outline"
