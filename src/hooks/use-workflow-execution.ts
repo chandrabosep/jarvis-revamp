@@ -110,13 +110,25 @@ export const useWorkflowExecution = ({
 					setIsInFeedbackMode(false);
 					resetFeedbackState();
 
-					const errorMessage: ChatMsg = {
-						id: `error_${Date.now()}`,
-						type: "response",
-						content: "Workflow execution failed",
-						timestamp: new Date(),
-					};
-					setChatMessages((prev) => [...prev, errorMessage]);
+					// Add error message only if it doesn't already exist
+					setChatMessages((prev) => {
+						const hasErrorMessage = prev.some(
+							(msg) =>
+								msg.type === "response" &&
+								msg.content === "Workflow execution failed"
+						);
+
+						if (!hasErrorMessage) {
+							const errorMessage: ChatMsg = {
+								id: `error_${Date.now()}`,
+								type: "response",
+								content: "Workflow execution failed",
+								timestamp: new Date(),
+							};
+							return [...prev, errorMessage];
+						}
+						return prev;
+					});
 				} else if (data.workflowStatus === "stopped") {
 					setIsExecuting(false);
 					setPollingStatus(false);

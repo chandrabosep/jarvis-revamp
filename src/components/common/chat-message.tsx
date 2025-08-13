@@ -113,7 +113,7 @@ export function ChatMessage({
 	if (message.type === "user") {
 		return (
 			<div className="relative mb-0">
-				<div className="p-4 border border-border/50 rounded-lg">
+				<div className="flex-1 min-w-0 pb-4">
 					<h2 className="text-2xl font-bold text-white leading-tight mb-2 capitalize">
 						{message.content}
 					</h2>
@@ -249,7 +249,7 @@ export function ChatMessage({
 					<div className="relative z-10 flex-shrink-0 ml-0.5 mr-4 pt-1">
 						<div className="size-3 rounded-full border-2 border-gray-700 bg-gray-500"></div>
 					</div>
-					<div className="p-4 border border-border/50 rounded-lg">
+					<div className="flex-1 min-w-0 p-4 border border-border/50 rounded-lg">
 						<div className="text-sm font-medium mb-2 flex items-center gap-2 text-gray-400">
 							<Bell className="w-4 h-4" />
 							<span>Notification</span>
@@ -334,7 +334,7 @@ export function ChatMessage({
 					<div className="relative z-10 flex-shrink-0 ml-0.5 mr-4 pt-1">
 						<div className="size-3 rounded-full border-2 border-gray-700 bg-gray-500"></div>
 					</div>
-					<div className="p-4 border border-border/50 rounded-lg">
+					<div className="flex-1 min-w-0 p-4 border border-border/50 rounded-lg">
 						<div className="text-sm font-medium mb-2 flex items-center gap-2 text-gray-400">
 							{isAuthentication ? (
 								<LucideCircleQuestionMark className="w-4 h-4" />
@@ -589,7 +589,7 @@ export function ChatMessage({
 					<div className="relative z-10 flex-shrink-0 ml-0.5 mr-4 pt-1">
 						<div className="size-3 rounded-full border-2 border-gray-700 bg-gray-500"></div>
 					</div>
-					<div className="p-4 border border-border/50 rounded-lg">
+					<div className="flex-1 min-w-0 p-4 border border-border/50 rounded-lg">
 						<div className="w-fit px-5 py-2 rounded-lg border border-border bg-sidebar/20 text-foreground text-sm leading-relaxed">
 							{isMarkdownContent(message.content) ? (
 								<MDXRenderer content={message.content} />
@@ -813,7 +813,7 @@ export function ChatMessage({
 				<div className="relative z-10 flex-shrink-0 ml-0.5 mr-4 pt-1">
 					<div className="size-3 rounded-full border-2 border-gray-700 bg-gray-500"></div>
 				</div>
-				<div className="p-4 border border-border/50 rounded-lg">
+				<div className="flex-1 min-w-0 p-4 border border-border/50 rounded-lg">
 					<div className="text-gray-200 text-sm leading-relaxed">
 						{isMarkdownContent(message.content) ? (
 							<MDXRenderer content={message.content} />

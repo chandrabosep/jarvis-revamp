@@ -221,7 +221,7 @@ const ChatSidebar = React.memo(() => {
 		<Sidebar
 			ref={sidebarRef}
 			collapsible="none"
-			className={`rounded-lg transition-all duration-200 ease-in-out flex flex-col   ${
+			className={`rounded-lg transition-all duration-300 ease-in-out flex flex-col   ${
 				!sidebarIsExpanded
 					? "w-[calc(var(--sidebar-width-icon)+5px)]!"
 					: "!w-56"
