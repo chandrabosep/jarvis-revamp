@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
+import "highlight.js/styles/github-dark.css";
 import { Web3AuthProvider } from "@/providers/Web3AuthProvider";
 import { Toaster } from "sonner";
 import { APP_CONFIG } from "@/config/constants";

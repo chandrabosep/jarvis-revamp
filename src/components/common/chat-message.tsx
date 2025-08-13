@@ -18,6 +18,31 @@ import {
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { MDXRenderer, isMarkdownContent } from "./mdx-renderer";
+import Link from "next/link";
+
+function convertUrlsToLinks(text: string): React.ReactNode {
+	if (!text || typeof text !== "string") return text;
+
+	const urlRegex = /(https?:\/\/[^\s]+)/g;
+	const parts = text.split(urlRegex);
+
+	return parts.map((part, index) => {
+		if (urlRegex.test(part)) {
+			return (
+				<Link
+					key={index}
+					href={part}
+					target="_blank"
+					className="text-blue-400 hover:text-blue-300 underline transition-colors"
+				>
+					{part.length > 50 ? `${part.substring(0, 50)}...` : part}
+				</Link>
+			);
+		}
+		return part;
+	});
+}
 
 interface ChatMessageProps {
 	message: {
@@ -88,7 +113,7 @@ export function ChatMessage({
 	if (message.type === "user") {
 		return (
 			<div className="relative mb-0">
-				<div className="flex-1 min-w-0 pb-6">
+				<div className="p-4 border border-border/50 rounded-lg">
 					<h2 className="text-2xl font-bold text-white leading-tight mb-2 capitalize">
 						{message.content}
 					</h2>
@@ -224,14 +249,18 @@ export function ChatMessage({
 					<div className="relative z-10 flex-shrink-0 ml-0.5 mr-4 pt-1">
 						<div className="size-3 rounded-full border-2 border-gray-700 bg-gray-500"></div>
 					</div>
-					<div className="flex-1 min-w-0 pb-6">
+					<div className="p-4 border border-border/50 rounded-lg">
 						<div className="text-sm font-medium mb-2 flex items-center gap-2 text-gray-400">
 							<Bell className="w-4 h-4" />
 							<span>Notification</span>
 						</div>
 						<div className="bg-sidebar/20 border border-border rounded-lg p-3">
 							<div className="text-foreground text-sm leading-relaxed">
-								{message.content}
+								{isMarkdownContent(message.content) ? (
+									<MDXRenderer content={message.content} />
+								) : (
+									convertUrlsToLinks(message.content)
+								)}
 							</div>
 							{/* Show Yes/No buttons if this is a pending notification */}
 							{isPendingNotification &&
@@ -268,12 +297,12 @@ export function ChatMessage({
 								From {message.toolName} agent
 							</div>
 						)}
-						<div className="text-xs text-gray-500 mt-2">
+						{/* <div className="text-xs text-gray-500 mt-2">
 							{message.timestamp.toLocaleTimeString([], {
 								hour: "2-digit",
 								minute: "2-digit",
 							})}
-						</div>
+						</div> */}
 					</div>
 				</div>
 			</div>
@@ -305,7 +334,7 @@ export function ChatMessage({
 					<div className="relative z-10 flex-shrink-0 ml-0.5 mr-4 pt-1">
 						<div className="size-3 rounded-full border-2 border-gray-700 bg-gray-500"></div>
 					</div>
-					<div className="flex-1 min-w-0 pb-6">
+					<div className="p-4 border border-border/50 rounded-lg">
 						<div className="text-sm font-medium mb-2 flex items-center gap-2 text-gray-400">
 							{isAuthentication ? (
 								<LucideCircleQuestionMark className="w-4 h-4" />
@@ -323,7 +352,16 @@ export function ChatMessage({
 						</div>
 						<div className="bg-sidebar/20 border border-border rounded-lg p-3">
 							<div className="text-foreground text-sm leading-relaxed overflow-hidden">
-								{message.questionData?.text || message.content}
+								{(() => {
+									const content =
+										message.questionData?.text ||
+										message.content;
+									return isMarkdownContent(content) ? (
+										<MDXRenderer content={content} />
+									) : (
+										convertUrlsToLinks(content)
+									);
+								})()}
 							</div>
 							{isAuthentication ? (
 								<div className="mt-3 space-y-2">
@@ -515,12 +553,12 @@ export function ChatMessage({
 								From {message.toolName} agent
 							</div>
 						)}
-						<div className="text-xs text-gray-500 mt-2">
+						{/* <div className="text-xs text-gray-500 mt-2">
 							{message.timestamp.toLocaleTimeString([], {
 								hour: "2-digit",
 								minute: "2-digit",
 							})}
-						</div>
+						</div> */}
 					</div>
 				</div>
 			</div>
@@ -551,16 +589,20 @@ export function ChatMessage({
 					<div className="relative z-10 flex-shrink-0 ml-0.5 mr-4 pt-1">
 						<div className="size-3 rounded-full border-2 border-gray-700 bg-gray-500"></div>
 					</div>
-					<div className="flex-1 min-w-0 pb-6">
+					<div className="p-4 border border-border/50 rounded-lg">
 						<div className="w-fit px-5 py-2 rounded-lg border border-border bg-sidebar/20 text-foreground text-sm leading-relaxed">
-							{message.content}
+							{isMarkdownContent(message.content) ? (
+								<MDXRenderer content={message.content} />
+							) : (
+								convertUrlsToLinks(message.content)
+							)}
 						</div>
-						<div className="text-xs text-gray-500 mt-2">
+						{/* <div className="text-xs text-gray-500 mt-2">
 							{message.timestamp.toLocaleTimeString([], {
 								hour: "2-digit",
 								minute: "2-digit",
 							})}
-						</div>
+						</div> */}
 					</div>
 				</div>
 			</div>
@@ -626,7 +668,7 @@ export function ChatMessage({
 					<div className="relative z-10 flex-shrink-0 ml-0.5 mr-4 pt-1">
 						{getStatusIcon()}
 					</div>
-					<div className="flex-1 min-w-0 pb-6">
+					<div className="flex-1 min-w-0 p-4 border border-border rounded-lg">
 						{message.toolName && (
 							<div className="text-sm mb-1 flex items-center gap-2">
 								<span className="text-gray-400 italic">
@@ -647,8 +689,14 @@ export function ChatMessage({
 						)}
 						{/* Only show content if not pending */}
 						{message.subnetStatus !== "pending" && (
-							<div className="text-gray-200 text-sm leading-relaxed whitespace-pre-wrap">
-								{message.content}
+							<div className="text-gray-200 text-sm leading-relaxed">
+								{isMarkdownContent(message.content) ? (
+									<MDXRenderer content={message.content} />
+								) : (
+									<div className="whitespace-pre-wrap">
+										{convertUrlsToLinks(message.content)}
+									</div>
+								)}
 							</div>
 						)}
 						{/* Display file content if present */}
@@ -730,12 +778,12 @@ export function ChatMessage({
 								)}
 							</div>
 						)}
-						<div className="text-xs text-gray-500 mt-2">
+						{/* <div className="text-xs text-gray-500 mt-2">
 							{message.timestamp.toLocaleTimeString([], {
 								hour: "2-digit",
 								minute: "2-digit",
 							})}
-						</div>
+						</div> */}
 					</div>
 				</div>
 			</div>
@@ -765,9 +813,15 @@ export function ChatMessage({
 				<div className="relative z-10 flex-shrink-0 ml-0.5 mr-4 pt-1">
 					<div className="size-3 rounded-full border-2 border-gray-700 bg-gray-500"></div>
 				</div>
-				<div className="flex-1 min-w-0 pb-6">
-					<div className="text-gray-200 text-sm leading-relaxed whitespace-pre-wrap">
-						{message.content}
+				<div className="p-4 border border-border/50 rounded-lg">
+					<div className="text-gray-200 text-sm leading-relaxed">
+						{isMarkdownContent(message.content) ? (
+							<MDXRenderer content={message.content} />
+						) : (
+							<div className="whitespace-pre-wrap">
+								{convertUrlsToLinks(message.content)}
+							</div>
+						)}
 					</div>
 					<div className="text-xs text-gray-500 mt-2">
 						{message.timestamp.toLocaleTimeString([], {

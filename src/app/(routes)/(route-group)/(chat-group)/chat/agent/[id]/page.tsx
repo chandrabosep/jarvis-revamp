@@ -422,7 +422,7 @@ export default function AgentChatPage() {
 				) : (
 					<div
 						ref={chatContainerRef}
-						className="overflow-y-auto scrollbar-hide h-[calc(100vh-10rem)]"
+						className="overflow-y-auto scrollbar-hide h-[calc(100vh-10rem)] flex flex-col gap-4"
 						onScroll={handleScroll}
 					>
 						{chatMessages.map((message, index) => (

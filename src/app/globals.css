@@ -1,6 +1,84 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* MDX Content Styles */
+.mdx-content {
+	/* Ensure proper spacing for markdown content */
+	line-height: 1.6;
+}
+
+.mdx-content ol {
+	list-style-type: decimal;
+	list-style-position: outside;
+	margin-left: 1.5rem;
+}
+
+.mdx-content ol > li {
+	display: list-item;
+	margin-bottom: 0.75rem;
+	padding-left: 0.5rem;
+}
+
+.mdx-content ul {
+	list-style-type: disc;
+	list-style-position: outside;
+	margin-left: 1.5rem;
+}
+
+.mdx-content ul > li {
+	display: list-item;
+	margin-bottom: 0.5rem;
+	padding-left: 0.5rem;
+}
+
+.mdx-content h1,
+.mdx-content h2,
+.mdx-content h3,
+.mdx-content h4,
+.mdx-content h5,
+.mdx-content h6 {
+	color: #dededc;
+	margin-top: 1.5rem;
+	margin-bottom: 1rem;
+}
+
+.mdx-content p {
+	margin-bottom: 1rem;
+}
+
+.mdx-content blockquote {
+	border-left: 4px solid #2c5ae1;
+	padding-left: 1rem;
+	margin: 1.5rem 0;
+	background-color: rgba(47, 51, 54, 0.5);
+	border-radius: 0 0.5rem 0.5rem 0;
+}
+
+.mdx-content code {
+	background-color: #2f3336;
+	color: #e7e7e6;
+	padding: 0.25rem 0.5rem;
+	border-radius: 0.25rem;
+	font-family: ui-monospace, SFMono-Regular, "SF Mono", Consolas,
+		"Liberation Mono", Menlo, monospace;
+	font-size: 0.875rem;
+}
+
+.mdx-content pre {
+	background-color: #1d1f20;
+	border: 1px solid #464646;
+	border-radius: 0.5rem;
+	padding: 1rem;
+	margin: 1.5rem 0;
+	overflow-x: auto;
+}
+
+.mdx-content pre code {
+	background: none;
+	padding: 0;
+	color: #e7e7e6;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -150,6 +228,7 @@ body {
 	}
 }
 
-.spline-watermark, .spline-logo {
+.spline-watermark,
+.spline-logo {
 	display: none !important;
-  }
+}
