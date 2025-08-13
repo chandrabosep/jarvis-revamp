@@ -19,7 +19,11 @@ import {
 	LogOutIcon,
 } from "lucide-react";
 import CustomTooltip from "./custom-tool-tip";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useWallet } from "@/hooks/use-wallet";
+import { useGlobalStore } from "@/stores/global-store";
+import { useChatStore } from "@/stores/chat-store";
+import { useWorkflowExecutionStore } from "@/stores/workflow-execution-store";
 import ChatSidebar from "./chat-sidebar";
 
 const navItems = [
@@ -42,7 +46,27 @@ const navItems = [
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 	const pathname = usePathname();
+	const router = useRouter();
+	const { disconnect } = useWallet();
+	const { reset: resetGlobalStore } = useGlobalStore();
+	const { reset: resetChatStore } = useChatStore();
+	const { reset: resetWorkflowExecutionStore } = useWorkflowExecutionStore();
 	const isChat = pathname.includes("/chat") || pathname.includes("/create");
+
+	const handleLogout = async () => {
+		try {
+			// Disconnect wallet
+			await disconnect();
+			// Reset all stores
+			resetGlobalStore();
+			resetChatStore();
+			resetWorkflowExecutionStore();
+			// Navigate to home page
+			router.push("/");
+		} catch (error) {
+			console.error("Logout failed:", error);
+		}
+	};
 
 	return (
 		<>
@@ -99,7 +123,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 						<SidebarMenu className="flex flex-col items-center">
 							<SidebarMenuItem className="w-fit hover:text-primary-foreground cursor-pointer">
 								<CustomTooltip content="Logout">
-									<LogOutIcon className="size-5" />
+									<LogOutIcon
+										className="size-5"
+										onClick={handleLogout}
+									/>
 								</CustomTooltip>
 							</SidebarMenuItem>
 						</SidebarMenu>

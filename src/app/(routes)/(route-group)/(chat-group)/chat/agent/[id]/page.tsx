@@ -794,16 +794,28 @@ export default function AgentChatPage() {
 							setFeedbackGivenForSubnet(new Set());
 							setPostFeedbackProcessing(new Map() as any);
 
-							const completionMessage: ChatMsg = {
-								id: `completion_${Date.now()}`,
-								type: "response",
-								content: "Workflow executed successfully",
-								timestamp: new Date(),
-							};
-							setChatMessages((prev) => [
-								...prev,
-								completionMessage,
-							]);
+							// Add completion message for completed workflows
+							setChatMessages((prev) => {
+								// Check if completion message already exists
+								const hasCompletionMessage = prev.some(
+									(msg) =>
+										msg.type === "response" &&
+										msg.content ===
+											"Workflow executed successfully"
+								);
+
+								if (!hasCompletionMessage) {
+									const completionMessage: ChatMsg = {
+										id: `completion_${Date.now()}`,
+										type: "response",
+										content:
+											"Workflow executed successfully",
+										timestamp: new Date(),
+									};
+									return [...prev, completionMessage];
+								}
+								return prev;
+							});
 						} else if (data.workflowStatus === "failed") {
 							setIsExecuting(false);
 							setPollingStatus(false);
@@ -1616,13 +1628,27 @@ export default function AgentChatPage() {
 						setPostFeedbackProcessing(new Map() as any);
 						setPrompt("");
 
-						const completionMessage: ChatMsg = {
-							id: `completion_${Date.now()}`,
-							type: "response",
-							content: "Workflow executed successfully",
-							timestamp: new Date(),
-						};
-						setChatMessages((prev) => [...prev, completionMessage]);
+						// Add completion message for completed workflows
+						setChatMessages((prev) => {
+							// Check if completion message already exists
+							const hasCompletionMessage = prev.some(
+								(msg) =>
+									msg.type === "response" &&
+									msg.content ===
+										"Workflow executed successfully"
+							);
+
+							if (!hasCompletionMessage) {
+								const completionMessage: ChatMsg = {
+									id: `completion_${Date.now()}`,
+									type: "response",
+									content: "Workflow executed successfully",
+									timestamp: new Date(),
+								};
+								return [...prev, completionMessage];
+							}
+							return prev;
+						});
 					} else if (data.workflowStatus === "failed") {
 						setIsExecuting(false);
 						setPollingStatus(false);
