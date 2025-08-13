@@ -13,7 +13,7 @@ export const getOriginalPayload = async (
 		web3Context
 	);
 	const response = await axiosInstance.get(
-		`/workflows/${workflowId}/original-payload`
+		`/requests/${workflowId}/original-payload`
 	);
 	return response.data;
 };

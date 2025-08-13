@@ -16,6 +16,9 @@ import { useWorkflowExecutor } from "@/hooks/use-workflow-executor";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card } from "@/components/ui/card";
 import ChatSkeleton from "@/components/common/chat-skeleton";
+import { getOriginalPayload } from "@/controllers/requests";
+import { Web3Context } from "@/types/wallet";
+import SkyMainBrowser from "@decloudlabs/skynet/lib/services/SkyMainBrowser";
 
 type ChatMsg = {
 	id: string;
@@ -108,7 +111,6 @@ export default function AgentChatPage() {
 	const [subnetPreviousStatus, setSubnetPreviousStatus] = useState<
 		Map<number, string>
 	>(new Map());
-	const [hasFeedbackBeenGiven, setHasFeedbackBeenGiven] = useState(false);
 	const [postFeedbackProcessing, setPostFeedbackProcessing] = useState<
 		Map<number, boolean>
 	>(new Map());
@@ -117,6 +119,41 @@ export default function AgentChatPage() {
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 	const hasAutoSubmittedRef = useRef(false);
 	const lastQuestionRef = useRef<string | null>(null);
+
+	useEffect(() => {
+		const extractOriginalPayload = async () => {
+			if (urlWorkflowId && skyBrowser && address) {
+				try {
+					const originalPayload = await getOriginalPayload(
+						urlWorkflowId,
+						skyBrowser as SkyMainBrowser,
+						{ address } as Web3Context
+					);
+
+					if (originalPayload?.originalRequestPayload?.prompt) {
+						const userMessage: ChatMsg = {
+							id: `user_${Date.now()}`,
+							type: "user",
+							content:
+								originalPayload.originalRequestPayload.prompt,
+							timestamp: new Date(),
+						};
+
+						setChatMessages((prevMessages) => {
+							if (prevMessages.length === 0) {
+								return [userMessage];
+							}
+							return prevMessages;
+						});
+					}
+				} catch (error) {
+					console.error("Failed to extract original payload:", error);
+				}
+			}
+		};
+
+		extractOriginalPayload();
+	}, [urlWorkflowId, skyBrowser, address]);
 
 	const startPollingExistingWorkflow = useCallback(
 		async (workflowId: string) => {
