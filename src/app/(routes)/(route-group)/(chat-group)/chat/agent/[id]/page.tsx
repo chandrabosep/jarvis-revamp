@@ -388,7 +388,7 @@ export default function AgentChatPage() {
 		return (
 			<div className="relative w-full max-w-7xl mx-auto h-full flex flex-col">
 				<ChatSkeleton />
-				<div className="mt-8 space-y-2 absolute bottom-0 left-0 right-0 pt-2 bg-background w-full">
+				<div className="absolute bottom-4 left-0 right-0 px-4 space-y-2">
 					<Skeleton className="h-6 w-24" />
 					<div className="flex space-x-2">
 						<Skeleton className="h-10 flex-1 rounded-md" />
@@ -416,10 +416,10 @@ export default function AgentChatPage() {
 
 	return (
 		<div className="relative w-full h-full flex flex-col">
-			<div className="flex-1 p-4 pb-24 min-h-0">
-				{chatMessages.length === 0 ? (
-					<ChatSkeleton />
-				) : (
+			{chatMessages.length === 0 ? (
+				<ChatSkeleton />
+			) : (
+				<div className="flex-1 p-4 pb-24 min-h-0">
 					<div
 						ref={chatContainerRef}
 						className="overflow-y-auto scrollbar-hide h-[calc(100vh-10rem)] flex flex-col gap-4"
@@ -446,8 +446,8 @@ export default function AgentChatPage() {
 						))}
 						<div ref={messagesEndRef} />
 					</div>
-				)}
-			</div>
+				</div>
+			)}
 
 			<div className="absolute bottom-4 left-0 right-0 px-4">
 				<ChatInput

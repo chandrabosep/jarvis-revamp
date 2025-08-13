@@ -823,12 +823,12 @@ export function ChatMessage({
 							</div>
 						)}
 					</div>
-					<div className="text-xs text-gray-500 mt-2">
+					{/* <div className="text-xs text-gray-500 mt-2">
 						{message.timestamp.toLocaleTimeString([], {
 							hour: "2-digit",
 							minute: "2-digit",
 						})}
-					</div>
+					</div> */}
 				</div>
 			</div>
 		</div>
