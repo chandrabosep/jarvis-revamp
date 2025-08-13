@@ -34,23 +34,20 @@ export default function CreatePage() {
 	};
 
 	return (
-		<div className="flex flex-col items-center h-full w-full relative gap-y-20">
-			<div className="w-full h-fit flex flex-col items-center justify-center gap-y-10 mt-[20%]">
-				<div className="w-full h-96	 relative">
-					{/* <Image
+		<div className="flex flex-col items-center h-full w-full relative ">
+			{/* <div className="w-full h-full flex flex-col items-center justify-center"> */}
+			<div className="w-full h-full max-h-[50%] relative">
+				{/* <Image
 					src="/full-logo.svg"
 					alt="Create"
 					width={1000}
 					height={1000}
 					className="w-full max-w-80 h-full"
 				/> */}
-					{/* <SvgAnimationParticles /> */}
-					<Spline
-						scene="https://prod.spline.design/P39fXqJAJJIM6P0m/scene.splinecode"
-						className="size-40 absolute"
-					/>
-					<div className="absolute bottom-5 right-5 h-10 w-36 bg-background"></div>
-				</div>
+				{/* <SvgAnimationParticles /> */}
+				<Spline scene="https://prod.spline.design/XGG3yvqNuvg63wOA/scene.splinecode" />
+				<div className="absolute bottom-5 right-5 h-10 w-36 bg-background"></div>
+				{/* </div> */}
 			</div>
 			<div className="w-fit min-w-4xl">
 				<ChatInput

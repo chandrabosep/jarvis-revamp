@@ -22,7 +22,7 @@ export default function RootLayout({
 			<body className={inter.className} suppressHydrationWarning>
 				<Web3AuthProvider>
 					<div className="min-h-screen bg-background">
-						<main className="h-screen">{children}</main>
+						<main className="h-screen w-full">{children}</main>
 					</div>
 					<Toaster />
 				</Web3AuthProvider>
