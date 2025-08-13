@@ -60,6 +60,17 @@ export class WorkflowExecutor {
 			`🔧 WorkflowExecutor.startPollingExistingWorkflow called for: ${workflowId}`
 		);
 
+		// Check if we're already polling this workflow
+		if (this.currentWorkflowId === workflowId && this.isPolling()) {
+			console.warn(
+				`⚠️ Already polling workflow ${workflowId}. Skipping duplicate polling.`
+			);
+			return true;
+		}
+
+		// Stop any existing polling before starting new one
+		this.stopPolling();
+
 		try {
 			// Get API key
 			console.log("🔑 Getting API key...");
@@ -377,6 +388,14 @@ export class WorkflowExecutor {
 		web3Context: Web3Context,
 		onStatusUpdate?: (data: WorkflowExecutionResponse) => void
 	): Promise<string> {
+		// Check if there's already an active workflow
+		if (this.currentWorkflowId && this.isPolling()) {
+			console.warn(
+				`⚠️ Agent workflow ${this.currentWorkflowId} is already running. Preventing duplicate execution.`
+			);
+			return this.currentWorkflowId;
+		}
+
 		// Construct the payload automatically with authentication
 		const payload = await this.constructExecutionPayload(
 			agentDetail,
@@ -417,6 +436,17 @@ export class WorkflowExecutor {
 		web3Context: Web3Context,
 		onStatusUpdate?: (data: WorkflowExecutionResponse) => void
 	): Promise<string> {
+		// Check if there's already an active workflow
+		if (this.currentWorkflowId && this.isPolling()) {
+			console.warn(
+				`⚠️ Workflow ${this.currentWorkflowId} is already running. Preventing duplicate execution.`
+			);
+			return this.currentWorkflowId;
+		}
+
+		// Stop any existing polling before starting new workflow
+		this.stopPolling();
+
 		// Get API key
 		const apiKey = await apiKeyManager.getApiKey(skyBrowser, web3Context);
 

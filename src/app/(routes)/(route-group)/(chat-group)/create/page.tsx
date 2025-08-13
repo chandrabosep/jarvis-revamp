@@ -45,7 +45,11 @@ export default function CreatePage() {
 					className="w-full max-w-80 h-full"
 				/> */}
 					{/* <SvgAnimationParticles /> */}
-					<Spline scene="https://prod.spline.design/ZU9FrJ5UpbQBuilN/scene.splinecode" />
+					<Spline
+						scene="https://prod.spline.design/P39fXqJAJJIM6P0m/scene.splinecode"
+						className="size-40 absolute"
+					/>
+					<div className="absolute bottom-5 right-5 h-10 w-36 bg-background"></div>
 				</div>
 			</div>
 			<div className="w-fit min-w-4xl">

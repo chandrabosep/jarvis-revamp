@@ -13,6 +13,9 @@ import { useWorkflowExecutionStore } from "@/stores/workflow-execution-store";
 import { useExecutionStatusStore } from "@/stores/execution-status-store";
 import { apiKeyManager } from "@/utils/api-key-manager";
 import { useWorkflowExecutor } from "@/hooks/use-workflow-executor";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Card } from "@/components/ui/card";
+import ChatSkeleton from "@/components/common/chat-skeleton";
 
 type ChatMsg = {
 	id: string;
@@ -26,7 +29,6 @@ type ChatMsg = {
 		| "notification";
 	content: string;
 	timestamp: Date;
-	// Workflow subnet specific fields
 	subnetStatus?:
 		| "pending"
 		| "in_progress"
@@ -35,24 +37,18 @@ type ChatMsg = {
 		| "waiting_response";
 	toolName?: string;
 	subnetIndex?: number;
-	// File data fields
 	imageData?: string;
 	isImage?: boolean;
 	contentType?: string;
-	// Question specific fields for authentication
 	questionData?: {
 		type: string;
 		text: string;
 		itemID: number;
 		expiresAt: string;
 	};
-	// Track the source for deduplication
 	sourceId?: string;
-	// Track if this is a regenerated content after feedback
 	isRegenerated?: boolean;
-	// Store the previous content hash for comparison
 	contentHash?: string;
-	// Feedback specific fields
 	question?: string;
 	answer?: string;
 };
@@ -95,18 +91,14 @@ export default function AgentChatPage() {
 	const { setPollingStatus, stopCurrentExecution, currentExecution } =
 		useWorkflowExecutionStore();
 
-	// Add state for pending notifications that need user response
 	const [pendingNotifications, setPendingNotifications] = useState<ChatMsg[]>(
 		[]
 	);
 
-	// Add execution status store for sidebar integration
 	const { updateExecutionStatus } = useExecutionStatusStore();
 
-	// Use the workflow executor hook
 	const { executeAgentWorkflow } = useWorkflowExecutor();
 
-	// Track content before feedback for comparison
 	const [preFeedbackContent, setPreFeedbackContent] = useState<
 		Map<number, string>
 	>(new Map());
@@ -126,7 +118,6 @@ export default function AgentChatPage() {
 	const hasAutoSubmittedRef = useRef(false);
 	const lastQuestionRef = useRef<string | null>(null);
 
-	// Function to start polling for existing workflow
 	const startPollingExistingWorkflow = useCallback(
 		async (workflowId: string) => {
 			if (!skyBrowser || !address) {
@@ -143,10 +134,8 @@ export default function AgentChatPage() {
 				setWorkflowStatus("in_progress");
 				setCurrentWorkflowId(workflowId);
 
-				// Set the workflow ID in the executor
 				workflowExecutor.setCurrentWorkflowId(workflowId);
 
-				// Create status update callback for existing workflow
 				const onStatusUpdate = (data: any) => {
 					console.log("📊 Status update received:", data);
 					setCurrentWorkflowData(data);
@@ -156,10 +145,8 @@ export default function AgentChatPage() {
 						workflowExecutor.setCurrentWorkflowId(data.requestId);
 					}
 
-					// Check if we have userPrompt in the data and no existing user message
 					if (data?.userPrompt && data.userPrompt.trim().length > 0) {
 						setChatMessages((prevMessages) => {
-							// Check if we already have a user message (avoid duplicates)
 							const hasUserMessage = prevMessages.some(
 								(msg) => msg.type === "user"
 							);
@@ -176,13 +163,11 @@ export default function AgentChatPage() {
 						});
 					}
 
-					// Use the same status update logic as in handlePromptSubmit
 					if (
 						data &&
 						Array.isArray(data.subnets) &&
 						data.subnets.length > 0
 					) {
-						// Track status transitions outside of setChatMessages to avoid stale closures
 						const statusTransitions: Map<
 							number,
 							{
@@ -209,7 +194,6 @@ export default function AgentChatPage() {
 								isShowingQuestion,
 							});
 
-							// Update tracking states
 							if (isRegenerating) {
 								console.log(
 									`Subnet ${index} transitioning from waiting_response to in_progress - will regenerate`
@@ -228,17 +212,14 @@ export default function AgentChatPage() {
 								);
 							}
 
-							// Update previous status for next iteration
 							setSubnetPreviousStatus((prev) =>
 								new Map(prev).set(index, subnet.status)
 							);
 						});
 
-						// Update chat messages using functional state update to avoid stale closures
 						setChatMessages((prevMessages) => {
 							let updatedMessages = [...prevMessages];
 
-							// Process each subnet (same logic as in handlePromptSubmit)
 							data.subnets.forEach(
 								(subnet: any, index: number) => {
 									const sourceId = `subnet_${index}_${subnet.status}`;
@@ -249,19 +230,16 @@ export default function AgentChatPage() {
 									const isShowingQuestion =
 										transition?.isShowingQuestion || false;
 
-									// Find existing message for this subnet
 									let existingMessageIndex =
 										updatedMessages.findIndex(
 											(msg) =>
 												msg.type ===
 													"workflow_subnet" &&
 												msg.subnetIndex === index &&
-												!msg.isRegenerated // Don't update regenerated messages
+												!msg.isRegenerated
 										);
 
-									// Handle different statuses (same logic as handlePromptSubmit)
 									if (subnet.status === "pending") {
-										// Don't show pending status in UI
 										if (existingMessageIndex >= 0) {
 											updatedMessages.splice(
 												existingMessageIndex,
@@ -271,17 +249,14 @@ export default function AgentChatPage() {
 									} else if (
 										subnet.status === "in_progress"
 									) {
-										// Always remove ALL feedback-related UI when status becomes in_progress
 										updatedMessages =
 											updatedMessages.filter((msg) => {
-												// Remove feedback-related messages for this subnet
 												if (
 													msg.type === "answer" &&
 													msg.subnetIndex === index
 												) {
 													return false;
 												}
-												// Remove feedback questions/prompts for this subnet
 												if (
 													(msg.type === "question" ||
 														msg.type ===
@@ -291,7 +266,6 @@ export default function AgentChatPage() {
 												) {
 													return false;
 												}
-												// Remove user answer inputs for this subnet
 												if (
 													msg.answer &&
 													msg.subnetIndex === index
@@ -301,7 +275,6 @@ export default function AgentChatPage() {
 												return true;
 											});
 
-										// Check if this is processing after feedback (detected by transition)
 										const isProcessingAfterFeedback =
 											isRegenerating ||
 											postFeedbackProcessing.get(index) ||
@@ -311,11 +284,9 @@ export default function AgentChatPage() {
 											console.log(
 												`Showing processing after feedback for subnet ${index}`
 											);
-											// Processing after feedback - remove ALL previous content including questions
 											updatedMessages =
 												updatedMessages.filter(
 													(msg) => {
-														// Remove old subnet messages
 														if (
 															msg.type ===
 																"workflow_subnet" &&
@@ -325,7 +296,6 @@ export default function AgentChatPage() {
 														) {
 															return false;
 														}
-														// Remove old questions/notifications for this subnet
 														if (
 															(msg.type ===
 																"question" ||
@@ -337,7 +307,6 @@ export default function AgentChatPage() {
 														) {
 															return false;
 														}
-														// Remove old answers for this subnet
 														if (
 															msg.type ===
 																"answer" &&
@@ -350,7 +319,6 @@ export default function AgentChatPage() {
 													}
 												);
 
-											// Add processing message at the bottom
 											const processingMessage: ChatMsg = {
 												id: `subnet_${index}_processing_after_feedback_${Date.now()}`,
 												type: "workflow_subnet",
@@ -360,14 +328,13 @@ export default function AgentChatPage() {
 												toolName: subnet.toolName,
 												subnetIndex: index,
 												sourceId: `${sourceId}_processing_after_feedback`,
-												isRegenerated: true, // Mark as regenerated so it appears at bottom
+												isRegenerated: true,
 											};
 
 											updatedMessages.push(
 												processingMessage
 											);
 										} else {
-											// Initial processing - show in-progress status
 											const progressMessage: ChatMsg = {
 												id: `subnet_${index}_${Date.now()}`,
 												type: "workflow_subnet",
@@ -393,14 +360,12 @@ export default function AgentChatPage() {
 										subnet.status === "done" &&
 										subnet.data
 									) {
-										// Parse the result
 										const result = parseAgentResponse(
 											subnet.data
 										);
 										const currentHash =
 											createContentHash(result);
 
-										// Check if this subnet had feedback and is processing after feedback
 										const previousHash =
 											preFeedbackContent.get(index);
 										const hadFeedback =
@@ -409,7 +374,6 @@ export default function AgentChatPage() {
 											postFeedbackProcessing.get(index) ||
 											false;
 
-										// Determine if content changed (compare hashes)
 										const isContentChanged =
 											hadFeedback &&
 											previousHash &&
@@ -419,8 +383,6 @@ export default function AgentChatPage() {
 											hadFeedback &&
 											wasProcessingAfterFeedback
 										) {
-											// This is completion after feedback with regeneration
-											// Remove any existing processing message for this subnet
 											const processingIndex =
 												updatedMessages.findIndex(
 													(msg) =>
@@ -434,7 +396,6 @@ export default function AgentChatPage() {
 												);
 
 											if (processingIndex >= 0) {
-												// Replace processing message with the result
 												const regeneratedMessage: ChatMsg =
 													{
 														id: `subnet_${index}_regenerated_${Date.now()}`,
@@ -462,7 +423,6 @@ export default function AgentChatPage() {
 													processingIndex
 												] = regeneratedMessage;
 											} else {
-												// Add new regenerated message at bottom
 												const regeneratedMessage: ChatMsg =
 													{
 														id: `subnet_${index}_regenerated_${Date.now()}`,
@@ -491,7 +451,6 @@ export default function AgentChatPage() {
 												);
 											}
 
-											// Clear the feedback tracking for this subnet
 											setFeedbackGivenForSubnet(
 												(prev) => {
 													const newSet = new Set(
@@ -511,7 +470,6 @@ export default function AgentChatPage() {
 												}
 											);
 										} else if (!hadFeedback) {
-											// First generation (no feedback yet) - update existing or add new
 											const doneMessage: ChatMsg = {
 												id: `subnet_${index}_${Date.now()}`,
 												type: "workflow_subnet",
@@ -539,8 +497,6 @@ export default function AgentChatPage() {
 												);
 											}
 										} else {
-											// Had feedback but content didn't change - keep original at top
-											// Clear the feedback tracking since we're done
 											setFeedbackGivenForSubnet(
 												(prev) => {
 													const newSet = new Set(
@@ -563,7 +519,6 @@ export default function AgentChatPage() {
 									} else if (
 										subnet.status === "waiting_response"
 									) {
-										// Store current content before feedback for this specific subnet
 										if (subnet.data) {
 											const result = parseAgentResponse(
 												subnet.data
@@ -578,16 +533,13 @@ export default function AgentChatPage() {
 											);
 										}
 
-										// If transitioning from in_progress to waiting_response, remove old content
 										if (isShowingQuestion) {
 											console.log(
 												`Removing old content for subnet ${index} before showing new data and question`
 											);
-											// Remove ALL previous messages for this subnet (including old data and questions)
 											updatedMessages =
 												updatedMessages.filter(
 													(msg) => {
-														// Remove old subnet messages
 														if (
 															msg.type ===
 																"workflow_subnet" &&
@@ -596,7 +548,6 @@ export default function AgentChatPage() {
 														) {
 															return false;
 														}
-														// Remove old questions/notifications for this subnet
 														if (
 															(msg.type ===
 																"question" ||
@@ -613,16 +564,13 @@ export default function AgentChatPage() {
 												);
 										}
 
-										// First, handle the data if it exists
 										if (subnet.data) {
 											const result = parseAgentResponse(
 												subnet.data
 											);
 
-											// Check if we need to show the parsed data content
 											let dataContent = result.content;
 
-											// Try to parse the data as JSON to extract more meaningful content
 											try {
 												const parsedData = JSON.parse(
 													subnet.data
@@ -631,7 +579,6 @@ export default function AgentChatPage() {
 													parsedData.enhancedPrompt &&
 													parsedData.originalPrompt
 												) {
-													// This is a prompt enhancement notification
 													dataContent =
 														"Prompt enhancement detected";
 												} else if (result.content) {
@@ -639,7 +586,6 @@ export default function AgentChatPage() {
 														result.content;
 												}
 											} catch {
-												// If not JSON or parsing fails, use the default parsed content
 												dataContent =
 													result.content ||
 													"Processing data...";
@@ -652,7 +598,7 @@ export default function AgentChatPage() {
 													dataContent ||
 													"Processing data...",
 												timestamp: new Date(),
-												subnetStatus: "done", // Show data as completed
+												subnetStatus: "done",
 												toolName: subnet.toolName,
 												subnetIndex: index,
 												imageData: result.imageData,
@@ -663,13 +609,11 @@ export default function AgentChatPage() {
 													createContentHash(result),
 											};
 
-											// If showing question (transitioning from in_progress), always add new message
 											if (isShowingQuestion) {
 												updatedMessages.push(
 													dataMessage
 												);
 											} else {
-												// Find if we already have a data message for this subnet
 												const existingDataIndex =
 													updatedMessages.findIndex(
 														(msg) =>
@@ -690,7 +634,6 @@ export default function AgentChatPage() {
 												} else if (
 													existingMessageIndex >= 0
 												) {
-													// Replace the existing subnet message with data message
 													updatedMessages[
 														existingMessageIndex
 													] = dataMessage;
@@ -701,7 +644,6 @@ export default function AgentChatPage() {
 												}
 											}
 										} else {
-											// No data yet, just show waiting status
 											const waitingMessage: ChatMsg = {
 												id: `subnet_${index}_${Date.now()}`,
 												type: "workflow_subnet",
@@ -716,7 +658,6 @@ export default function AgentChatPage() {
 											};
 
 											if (isShowingQuestion) {
-												// Always add new waiting message when showing question
 												updatedMessages.push(
 													waitingMessage
 												);
@@ -733,19 +674,16 @@ export default function AgentChatPage() {
 											}
 										}
 
-										// Now handle the question if it exists (shown after data)
 										if (subnet.question) {
 											const questionText =
 												subnet.question.text;
 											const questionType =
 												subnet.question.type;
 
-											// Create a unique ID for this question
 											const questionId = `${questionType}_${
 												subnet.itemID
 											}_${Date.now()}`;
 
-											// Check if we already have this exact question (but not when showing new question)
 											const existingQuestionIndex =
 												isShowingQuestion
 													? -1
@@ -766,7 +704,6 @@ export default function AgentChatPage() {
 													  );
 
 											if (existingQuestionIndex === -1) {
-												// Add new question/notification
 												if (
 													questionType ===
 													"notification"
@@ -790,7 +727,6 @@ export default function AgentChatPage() {
 														notificationMessage
 													);
 
-													// Add to pending notifications for user response
 													setPendingNotifications(
 														(prev) => [
 															...prev,
@@ -850,13 +786,11 @@ export default function AgentChatPage() {
 							return updatedMessages;
 						});
 
-						// Update workflow status
 						if (data.workflowStatus === "completed") {
 							setIsExecuting(false);
 							setPollingStatus(false);
 							setWorkflowStatus("completed");
 							setIsInFeedbackMode(false);
-							// Clear all feedback tracking when workflow completes
 							setFeedbackGivenForSubnet(new Set());
 							setPostFeedbackProcessing(new Map() as any);
 
@@ -875,7 +809,6 @@ export default function AgentChatPage() {
 							setPollingStatus(false);
 							setWorkflowStatus("failed");
 							setIsInFeedbackMode(false);
-							// Clear all feedback tracking when workflow fails
 							setFeedbackGivenForSubnet(new Set());
 							setPostFeedbackProcessing(new Map() as any);
 
@@ -891,7 +824,6 @@ export default function AgentChatPage() {
 							setPollingStatus(false);
 							setWorkflowStatus("stopped");
 							setIsInFeedbackMode(false);
-							// Clear all feedback tracking when workflow stops
 							setFeedbackGivenForSubnet(new Set());
 							setPostFeedbackProcessing(new Map() as any);
 
@@ -917,7 +849,6 @@ export default function AgentChatPage() {
 					}
 				};
 
-				// Start polling for the existing workflow
 				const success =
 					await workflowExecutor.startPollingExistingWorkflow(
 						workflowId,
@@ -954,7 +885,6 @@ export default function AgentChatPage() {
 		}
 	};
 
-	// Helper function to create content hash for comparison
 	const createContentHash = (data: any): string => {
 		if (!data) return "";
 		const content = JSON.stringify({
@@ -965,7 +895,6 @@ export default function AgentChatPage() {
 		return content;
 	};
 
-	// Helper: Parse agent response from workflow result
 	const parseAgentResponse = (
 		subnetData: string
 	): {
@@ -977,16 +906,12 @@ export default function AgentChatPage() {
 		try {
 			const parsed = JSON.parse(subnetData);
 
-			// Check for contentType first - this is the most reliable indicator
 			if (parsed?.contentType) {
 				const contentType = parsed.contentType.toLowerCase();
 
-				// Handle different content types
 				if (contentType.startsWith("image/")) {
-					// This is an image
 					let imageData = "";
 
-					// Check for fileData first
 					if (
 						parsed?.fileData &&
 						typeof parsed.fileData === "string"
@@ -996,7 +921,6 @@ export default function AgentChatPage() {
 						parsed?.data &&
 						typeof parsed.data === "string"
 					) {
-						// Fallback to data field
 						imageData = parsed.data;
 					}
 
@@ -1014,7 +938,6 @@ export default function AgentChatPage() {
 					contentType.startsWith("application/") ||
 					contentType.startsWith("text/")
 				) {
-					// This is a file or document
 					let fileData = "";
 
 					if (
@@ -1032,7 +955,7 @@ export default function AgentChatPage() {
 					if (fileData) {
 						return {
 							content: `${contentType} file generated successfully`,
-							imageData: fileData, // We'll use imageData field for any file type
+							imageData: fileData,
 							isImage: false,
 							contentType: contentType,
 						};
@@ -1040,13 +963,11 @@ export default function AgentChatPage() {
 				}
 			}
 
-			// Fallback: Check if this is image data by content patterns
 			if (
 				parsed?.data &&
 				typeof parsed.data === "string" &&
 				parsed.data.startsWith("/9j/")
 			) {
-				// This is JPEG image data
 				return {
 					content: "JPEG image generated successfully",
 					imageData: parsed.data,
@@ -1055,10 +976,8 @@ export default function AgentChatPage() {
 				};
 			}
 
-			// Check for fileData in the response (fallback)
 			if (parsed?.fileData && typeof parsed.fileData === "string") {
 				if (parsed.fileData.startsWith("/9j/")) {
-					// JPEG image data
 					return {
 						content: "JPEG image generated successfully",
 						imageData: parsed.fileData,
@@ -1066,7 +985,6 @@ export default function AgentChatPage() {
 						contentType: "image/jpeg",
 					};
 				} else if (parsed.fileData.startsWith("data:image/")) {
-					// Base64 encoded image with data URL
 					const mimeType =
 						parsed.fileData.match(/data:(.*?);/)?.[1] ||
 						"image/jpeg";
@@ -1081,7 +999,6 @@ export default function AgentChatPage() {
 				}
 			}
 
-			// Handle nested data structure for text responses
 			if (parsed?.data?.data?.choices?.[0]?.message?.content) {
 				return { content: parsed.data.data.choices[0].message.content };
 			}
@@ -1112,6 +1029,10 @@ export default function AgentChatPage() {
 			currentWorkflowData?.workflowStatus === "waiting_response"
 		) {
 			await handleFeedbackResponse(message);
+			return;
+		}
+
+		if (isExecuting) {
 			return;
 		}
 
@@ -1150,7 +1071,6 @@ export default function AgentChatPage() {
 					Array.isArray(data.subnets) &&
 					data.subnets.length > 0
 				) {
-					// Track status transitions outside of setChatMessages to avoid stale closures
 					const statusTransitions: Map<
 						number,
 						{
@@ -1177,7 +1097,6 @@ export default function AgentChatPage() {
 							isShowingQuestion,
 						});
 
-						// Update tracking states
 						if (isRegenerating) {
 							console.log(
 								`Subnet ${index} transitioning from waiting_response to in_progress - will regenerate`
@@ -1196,17 +1115,14 @@ export default function AgentChatPage() {
 							);
 						}
 
-						// Update previous status for next iteration
 						setSubnetPreviousStatus((prev) =>
 							new Map(prev).set(index, subnet.status)
 						);
 					});
 
-					// Update chat messages using functional state update to avoid stale closures
 					setChatMessages((prevMessages) => {
 						let updatedMessages = [...prevMessages];
 
-						// Process each subnet
 						data.subnets.forEach((subnet: any, index: number) => {
 							const sourceId = `subnet_${index}_${subnet.status}`;
 							const transition = statusTransitions.get(index);
@@ -1215,18 +1131,15 @@ export default function AgentChatPage() {
 							const isShowingQuestion =
 								transition?.isShowingQuestion || false;
 
-							// Find existing message for this subnet
 							let existingMessageIndex =
 								updatedMessages.findIndex(
 									(msg) =>
 										msg.type === "workflow_subnet" &&
 										msg.subnetIndex === index &&
-										!msg.isRegenerated // Don't update regenerated messages
+										!msg.isRegenerated
 								);
 
-							// Handle different statuses
 							if (subnet.status === "pending") {
-								// Don't show pending status in UI
 								if (existingMessageIndex >= 0) {
 									updatedMessages.splice(
 										existingMessageIndex,
@@ -1234,18 +1147,14 @@ export default function AgentChatPage() {
 									);
 								}
 							} else if (subnet.status === "in_progress") {
-								// Always remove ALL feedback-related UI when status becomes in_progress
-								// This includes feedback questions, user answers, submissions, etc.
 								updatedMessages = updatedMessages.filter(
 									(msg) => {
-										// Remove feedback-related messages for this subnet
 										if (
 											msg.type === "answer" &&
 											msg.subnetIndex === index
 										) {
 											return false;
 										}
-										// Remove feedback questions/prompts for this subnet
 										if (
 											(msg.type === "question" ||
 												msg.type === "notification") &&
@@ -1254,14 +1163,12 @@ export default function AgentChatPage() {
 										) {
 											return false;
 										}
-										// Remove user answer inputs for this subnet
 										if (
 											msg.answer &&
 											msg.subnetIndex === index
 										) {
 											return false;
 										}
-										// Remove any messages that contain feedback submission confirmations or user inputs
 										if (
 											msg.content?.includes(
 												"Feedback submitted successfully"
@@ -1289,7 +1196,6 @@ export default function AgentChatPage() {
 									}
 								);
 
-								// Check if this is processing after feedback (detected by transition)
 								const isProcessingAfterFeedback =
 									isRegenerating ||
 									postFeedbackProcessing.get(index) ||
@@ -1299,10 +1205,8 @@ export default function AgentChatPage() {
 									console.log(
 										`Showing processing after feedback for subnet ${index}`
 									);
-									// Processing after feedback - remove ALL previous content including questions
 									updatedMessages = updatedMessages.filter(
 										(msg) => {
-											// Remove old subnet messages
 											if (
 												msg.type ===
 													"workflow_subnet" &&
@@ -1311,7 +1215,6 @@ export default function AgentChatPage() {
 											) {
 												return false;
 											}
-											// Remove old questions/notifications for this subnet
 											if (
 												(msg.type === "question" ||
 													msg.type ===
@@ -1321,7 +1224,6 @@ export default function AgentChatPage() {
 											) {
 												return false;
 											}
-											// Remove old answers for this subnet
 											if (
 												msg.type === "answer" &&
 												msg.subnetIndex === index
@@ -1332,7 +1234,6 @@ export default function AgentChatPage() {
 										}
 									);
 
-									// Add processing message at the bottom
 									const processingMessage: ChatMsg = {
 										id: `subnet_${index}_processing_after_feedback_${Date.now()}`,
 										type: "workflow_subnet",
@@ -1342,12 +1243,11 @@ export default function AgentChatPage() {
 										toolName: subnet.toolName,
 										subnetIndex: index,
 										sourceId: `${sourceId}_processing_after_feedback`,
-										isRegenerated: true, // Mark as regenerated so it appears at bottom
+										isRegenerated: true,
 									};
 
 									updatedMessages.push(processingMessage);
 								} else {
-									// Initial processing - show in-progress status
 									const progressMessage: ChatMsg = {
 										id: `subnet_${index}_${Date.now()}`,
 										type: "workflow_subnet",
@@ -1370,11 +1270,9 @@ export default function AgentChatPage() {
 								subnet.status === "done" &&
 								subnet.data
 							) {
-								// Parse the result
 								const result = parseAgentResponse(subnet.data);
 								const currentHash = createContentHash(result);
 
-								// Check if this subnet had feedback and is processing after feedback
 								const previousHash =
 									preFeedbackContent.get(index);
 								const hadFeedback =
@@ -1382,15 +1280,12 @@ export default function AgentChatPage() {
 								const wasProcessingAfterFeedback =
 									postFeedbackProcessing.get(index) || false;
 
-								// Determine if content changed (compare hashes)
 								const isContentChanged =
 									hadFeedback &&
 									previousHash &&
 									previousHash !== currentHash;
 
 								if (hadFeedback && wasProcessingAfterFeedback) {
-									// This is completion after feedback with regeneration
-									// Remove any existing processing message for this subnet
 									const processingIndex =
 										updatedMessages.findIndex(
 											(msg) =>
@@ -1403,7 +1298,6 @@ export default function AgentChatPage() {
 										);
 
 									if (processingIndex >= 0) {
-										// Replace processing message with the result
 										const regeneratedMessage: ChatMsg = {
 											id: `subnet_${index}_regenerated_${Date.now()}`,
 											type: "workflow_subnet",
@@ -1425,7 +1319,6 @@ export default function AgentChatPage() {
 										updatedMessages[processingIndex] =
 											regeneratedMessage;
 									} else {
-										// Add new regenerated message at bottom
 										const regeneratedMessage: ChatMsg = {
 											id: `subnet_${index}_regenerated_${Date.now()}`,
 											type: "workflow_subnet",
@@ -1449,7 +1342,6 @@ export default function AgentChatPage() {
 										);
 									}
 
-									// Clear the feedback tracking for this subnet
 									setFeedbackGivenForSubnet((prev) => {
 										const newSet = new Set(prev);
 										newSet.delete(index);
@@ -1461,7 +1353,6 @@ export default function AgentChatPage() {
 										return newMap;
 									});
 								} else if (!hadFeedback) {
-									// First generation (no feedback yet) - update existing or add new
 									const doneMessage: ChatMsg = {
 										id: `subnet_${index}_${Date.now()}`,
 										type: "workflow_subnet",
@@ -1486,9 +1377,6 @@ export default function AgentChatPage() {
 										updatedMessages.push(doneMessage);
 									}
 								} else {
-									// Had feedback but content didn't change - keep original at top
-									// Don't add a new message, original stays in place
-									// Clear the feedback tracking since we're done
 									setFeedbackGivenForSubnet((prev) => {
 										const newSet = new Set(prev);
 										newSet.delete(index);
@@ -1501,7 +1389,6 @@ export default function AgentChatPage() {
 									});
 								}
 							} else if (subnet.status === "waiting_response") {
-								// Store current content before feedback for this specific subnet
 								if (subnet.data) {
 									const result = parseAgentResponse(
 										subnet.data
@@ -1513,15 +1400,12 @@ export default function AgentChatPage() {
 									);
 								}
 
-								// If transitioning from in_progress to waiting_response, remove old content
 								if (isShowingQuestion) {
 									console.log(
 										`Removing old content for subnet ${index} before showing new data and question`
 									);
-									// Remove ALL previous messages for this subnet (including old data and questions)
 									updatedMessages = updatedMessages.filter(
 										(msg) => {
-											// Remove old subnet messages
 											if (
 												msg.type ===
 													"workflow_subnet" &&
@@ -1529,7 +1413,6 @@ export default function AgentChatPage() {
 											) {
 												return false;
 											}
-											// Remove old questions/notifications for this subnet
 											if (
 												(msg.type === "question" ||
 													msg.type ===
@@ -1544,17 +1427,13 @@ export default function AgentChatPage() {
 									);
 								}
 
-								// First, handle the data if it exists
 								if (subnet.data) {
 									const result = parseAgentResponse(
 										subnet.data
 									);
 
-									// Check if we need to show the parsed data content
-									// For notification type with enhanced prompt, we want to show the enhanced prompt details
 									let dataContent = result.content;
 
-									// Try to parse the data as JSON to extract more meaningful content
 									try {
 										const parsedData = JSON.parse(
 											subnet.data
@@ -1563,14 +1442,12 @@ export default function AgentChatPage() {
 											parsedData.enhancedPrompt &&
 											parsedData.originalPrompt
 										) {
-											// This is a prompt enhancement notification
 											dataContent =
 												"Prompt enhancement detected";
 										} else if (result.content) {
 											dataContent = result.content;
 										}
 									} catch {
-										// If not JSON or parsing fails, use the default parsed content
 										dataContent =
 											result.content ||
 											"Processing data...";
@@ -1582,7 +1459,7 @@ export default function AgentChatPage() {
 										content:
 											dataContent || "Processing data...",
 										timestamp: new Date(),
-										subnetStatus: "done", // Show data as completed
+										subnetStatus: "done",
 										toolName: subnet.toolName,
 										subnetIndex: index,
 										imageData: result.imageData,
@@ -1592,11 +1469,9 @@ export default function AgentChatPage() {
 										contentHash: createContentHash(result),
 									};
 
-									// If showing question (transitioning from in_progress), always add new message
 									if (isShowingQuestion) {
 										updatedMessages.push(dataMessage);
 									} else {
-										// Find if we already have a data message for this subnet
 										const existingDataIndex =
 											updatedMessages.findIndex(
 												(msg) =>
@@ -1613,7 +1488,6 @@ export default function AgentChatPage() {
 											updatedMessages[existingDataIndex] =
 												dataMessage;
 										} else if (existingMessageIndex >= 0) {
-											// Replace the existing subnet message with data message
 											updatedMessages[
 												existingMessageIndex
 											] = dataMessage;
@@ -1622,7 +1496,6 @@ export default function AgentChatPage() {
 										}
 									}
 								} else {
-									// No data yet, just show waiting status
 									const waitingMessage: ChatMsg = {
 										id: `subnet_${index}_${Date.now()}`,
 										type: "workflow_subnet",
@@ -1635,7 +1508,6 @@ export default function AgentChatPage() {
 									};
 
 									if (isShowingQuestion) {
-										// Always add new waiting message when showing question
 										updatedMessages.push(waitingMessage);
 									} else if (existingMessageIndex >= 0) {
 										updatedMessages[existingMessageIndex] =
@@ -1645,17 +1517,14 @@ export default function AgentChatPage() {
 									}
 								}
 
-								// Now handle the question if it exists (shown after data)
 								if (subnet.question) {
 									const questionText = subnet.question.text;
 									const questionType = subnet.question.type;
 
-									// Create a unique ID for this question
 									const questionId = `${questionType}_${
 										subnet.itemID
 									}_${Date.now()}`;
 
-									// Check if we already have this exact question (but not when showing new question)
 									const existingQuestionIndex =
 										isShowingQuestion
 											? -1
@@ -1675,7 +1544,6 @@ export default function AgentChatPage() {
 											  );
 
 									if (existingQuestionIndex === -1) {
-										// Add new question/notification
 										if (questionType === "notification") {
 											const notificationMessage: ChatMsg =
 												{
@@ -1692,7 +1560,6 @@ export default function AgentChatPage() {
 												notificationMessage
 											);
 
-											// Add to pending notifications for user response
 											setPendingNotifications((prev) => [
 												...prev,
 												notificationMessage,
@@ -1740,16 +1607,13 @@ export default function AgentChatPage() {
 						return updatedMessages;
 					});
 
-					// Update workflow status
 					if (data.workflowStatus === "completed") {
 						setIsExecuting(false);
 						setPollingStatus(false);
 						setWorkflowStatus("completed");
 						setIsInFeedbackMode(false);
-						// Clear all feedback tracking when workflow completes
 						setFeedbackGivenForSubnet(new Set());
 						setPostFeedbackProcessing(new Map() as any);
-						// Clear prompt when workflow completes successfully
 						setPrompt("");
 
 						const completionMessage: ChatMsg = {
@@ -1764,7 +1628,6 @@ export default function AgentChatPage() {
 						setPollingStatus(false);
 						setWorkflowStatus("failed");
 						setIsInFeedbackMode(false);
-						// Clear all feedback tracking when workflow fails
 						setFeedbackGivenForSubnet(new Set());
 						setPostFeedbackProcessing(new Map() as any);
 
@@ -1780,7 +1643,6 @@ export default function AgentChatPage() {
 						setPollingStatus(false);
 						setWorkflowStatus("stopped");
 						setIsInFeedbackMode(false);
-						// Clear all feedback tracking when workflow stops
 						setFeedbackGivenForSubnet(new Set());
 						setPostFeedbackProcessing(new Map() as any);
 
@@ -1816,7 +1678,6 @@ export default function AgentChatPage() {
 			setCurrentWorkflowId(workflowId);
 			workflowExecutor.setCurrentWorkflowId(workflowId);
 
-			// Add workflowId to URL for consistent behavior
 			const currentUrl = new URL(window.location.href);
 			currentUrl.searchParams.set("workflowId", workflowId);
 			window.history.replaceState({}, "", currentUrl.toString());
@@ -1830,7 +1691,6 @@ export default function AgentChatPage() {
 		}
 	};
 
-	// Handle feedback submission for questions
 	const handleFeedbackSubmit = async (
 		question: string,
 		answer: string,
@@ -1844,18 +1704,15 @@ export default function AgentChatPage() {
 		try {
 			setIsSubmittingFeedback(true);
 
-			// Find which subnet is waiting for response
 			const waitingSubnetIndex = currentWorkflowData?.subnets?.findIndex(
 				(subnet: any) =>
 					subnet.status === "waiting_response" && subnet.question
 			);
 
 			if (waitingSubnetIndex !== undefined && waitingSubnetIndex >= 0) {
-				// Mark that feedback was given for this specific subnet
 				setFeedbackGivenForSubnet((prev) =>
 					new Set(prev).add(waitingSubnetIndex)
 				);
-				// Mark this subnet as potentially regenerating
 				setPostFeedbackProcessing((prev) =>
 					new Map(prev).set(waitingSubnetIndex, true)
 				);
@@ -1990,7 +1847,6 @@ export default function AgentChatPage() {
 		}
 	};
 
-	// Handle feedback proceed (user clicks "Yes, proceed")
 	const handleFeedbackProceed = async (question: string, answer: string) => {
 		if (!currentWorkflowId || !skyBrowser || !address) {
 			console.error("Missing required data for feedback proceed");
@@ -2000,18 +1856,15 @@ export default function AgentChatPage() {
 		try {
 			setIsSubmittingFeedback(true);
 
-			// Find which subnet is waiting for response
 			const waitingSubnetIndex = currentWorkflowData?.subnets?.findIndex(
 				(subnet: any) =>
 					subnet.status === "waiting_response" && subnet.question
 			);
 
 			if (waitingSubnetIndex !== undefined && waitingSubnetIndex >= 0) {
-				// Mark that feedback was given for this specific subnet
 				setFeedbackGivenForSubnet((prev) =>
 					new Set(prev).add(waitingSubnetIndex)
 				);
-				// Mark this subnet as potentially regenerating
 				setPostFeedbackProcessing((prev) =>
 					new Map(prev).set(waitingSubnetIndex, true)
 				);
@@ -2146,7 +1999,6 @@ export default function AgentChatPage() {
 		}
 	};
 
-	// Handle feedback response submission (legacy function for backward compatibility)
 	const handleFeedbackResponse = async (feedback: string) => {
 		if (!currentWorkflowId || !skyBrowser || !address) {
 			console.error("Missing required data for feedback submission");
@@ -2156,18 +2008,15 @@ export default function AgentChatPage() {
 		try {
 			setIsSubmittingFeedback(true);
 
-			// Find which subnet is waiting for response
 			const waitingSubnetIndex = currentWorkflowData?.subnets?.findIndex(
 				(subnet: any) =>
 					subnet.status === "waiting_response" && subnet.question
 			);
 
 			if (waitingSubnetIndex !== undefined && waitingSubnetIndex >= 0) {
-				// Mark that feedback was given for this specific subnet
 				setFeedbackGivenForSubnet((prev) =>
 					new Set(prev).add(waitingSubnetIndex)
 				);
-				// Mark this subnet as potentially regenerating
 				setPostFeedbackProcessing((prev) =>
 					new Map(prev).set(waitingSubnetIndex, true)
 				);
@@ -2366,9 +2215,6 @@ export default function AgentChatPage() {
 					setCurrentWorkflowId(data.requestId);
 					workflowExecutor.setCurrentWorkflowId(data.requestId);
 				}
-
-				// Same status update logic as in handlePromptSubmit
-				// ... (using the same logic from above)
 			};
 
 			workflowExecutor.setCurrentStatusCallback(newStatusCallback);
@@ -2396,21 +2242,17 @@ export default function AgentChatPage() {
 		}
 	};
 
-	// Handle notification response - Yes (automatic approval)
 	const handleNotificationYes = async (notification: ChatMsg) => {
-		// Remove from pending notifications
 		setPendingNotifications((prev) =>
 			prev.filter((n) => n.id !== notification.id)
 		);
 	};
 
-	// Handle notification response - No (emergency stop)
 	const handleNotificationNo = async (notification: ChatMsg) => {
 		setPendingNotifications((prev) =>
 			prev.filter((n) => n.id !== notification.id)
 		);
 
-		// Emergency stop the workflow
 		await handleStopExecution();
 	};
 
@@ -2432,18 +2274,13 @@ export default function AgentChatPage() {
 		};
 	}, [currentWorkflowId, workflowStatus]);
 
-	// Handle URL workflow ID - start polling for existing workflow
 	useEffect(() => {
-		// Skip if still loading
 		if (isLoading || !skyBrowser || !address) {
 			return;
 		}
 
-		// Check if we have a workflowId in the URL
 		if (urlWorkflowId && urlWorkflowId.trim().length > 0) {
-			// If the URL workflow ID is different from the current one, switch to the new workflow
 			if (currentWorkflowId !== urlWorkflowId) {
-				// Stop any existing polling first
 				if (currentWorkflowId) {
 					workflowExecutor.clearCurrentWorkflow();
 				}
@@ -2646,9 +2483,14 @@ export default function AgentChatPage() {
 
 	if (isLoading) {
 		return (
-			<div className="flex items-center justify-center h-full">
-				<div className="text-center">
-					<p className="text-muted-foreground">Loading agent...</p>
+			<div className="relative w-full max-w-7xl mx-auto h-full flex flex-col">
+				<ChatSkeleton />;{/* Input Area Skeleton */}
+				<div className="mt-8 space-y-2 absolute bottom-0 left-0 right-0  pt-2 bg-background w-full">
+					<Skeleton className="h-6	 w-24" />
+					<div className="flex space-x-2">
+						<Skeleton className="h-10 flex-1 rounded-md" />
+						<Skeleton className="h-10 w-10 rounded-md" />
+					</div>
 				</div>
 			</div>
 		);
@@ -2673,16 +2515,7 @@ export default function AgentChatPage() {
 		<div className="relative w-full h-full flex flex-col">
 			<div className="flex-1 p-4 pb-24 min-h-0">
 				{chatMessages.length === 0 ? (
-					<div className="flex items-center justify-center h-full min-h-[400px]">
-						<div className="text-center text-gray-500">
-							<p className="text-lg font-medium">
-								Start a conversation with {selectedAgent?.name}
-							</p>
-							<p className="text-sm mt-2 text-gray-400">
-								Type your request below to begin
-							</p>
-						</div>
-					</div>
+					<ChatSkeleton />
 				) : (
 					<div className="overflow-y-auto scrollbar-hide h-[calc(100vh-10rem)]">
 						{chatMessages.map((message, index) => (
