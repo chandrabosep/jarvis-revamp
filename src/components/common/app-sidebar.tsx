@@ -28,17 +28,17 @@ import ChatSidebar from "./chat-sidebar";
 
 const navItems = [
 	{
-		icon: <PlusCircleIcon />,
+		icon: <PlusCircleIcon className="size-5" />,
 		title: "Create",
 		url: "/create",
 	},
 	{
-		icon: <HistoryIcon />,
+		icon: <HistoryIcon className="size-5" />,
 		title: "History",
 		url: "/history",
 	},
 	{
-		icon: <Wallet2Icon />,
+		icon: <Wallet2Icon className="size-5" />,
 		title: "Manage Funds",
 		url: "/",
 	},
