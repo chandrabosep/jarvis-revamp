@@ -64,7 +64,11 @@ const getWorkflowIcon = (status: string) => {
 		case "waiting_response":
 			return TimerIcon;
 		case "stopped":
+		case "failed":
 			return XCircle;
+		case "in_progress":
+			return TimerIcon;
+		case "pending":
 		default:
 			return Clock;
 	}

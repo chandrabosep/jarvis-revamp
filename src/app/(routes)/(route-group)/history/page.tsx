@@ -39,12 +39,12 @@ const getStatusBadge = (status: string) => {
 			className: "bg-green-100 text-green-800 hover:bg-green-100",
 		},
 		stopped: {
-			label: "Failed",
-			variant: "destructive" as const,
-			className: "bg-red-100 text-red-800 hover:bg-red-100",
+			label: "Stopped",
+			variant: "secondary" as const,
+			className: "bg-orange-100 text-orange-800 hover:bg-orange-100",
 		},
 		waiting_response: {
-			label: "Warning",
+			label: "Waiting Response",
 			variant: "secondary" as const,
 			className: "bg-yellow-100 text-yellow-800 hover:bg-yellow-100",
 		},
@@ -52,6 +52,16 @@ const getStatusBadge = (status: string) => {
 			label: "Failed",
 			variant: "destructive" as const,
 			className: "bg-red-100 text-red-800 hover:bg-red-100",
+		},
+		in_progress: {
+			label: "In Progress",
+			variant: "secondary" as const,
+			className: "bg-blue-100 text-blue-800 hover:bg-blue-100",
+		},
+		pending: {
+			label: "Pending",
+			variant: "secondary" as const,
+			className: "bg-gray-100 text-gray-800 hover:bg-gray-100",
 		},
 	};
 
@@ -71,10 +81,16 @@ const formatDuration = (createdAt: string, updatedAt: string) => {
 	const updated = new Date(updatedAt);
 	const diffMs = updated.getTime() - created.getTime();
 	const diffMinutes = Math.floor(diffMs / (1000 * 60));
+	const diffHours = Math.floor(diffMinutes / 60);
+	const diffDays = Math.floor(diffHours / 24);
 
 	if (diffMinutes < 1) return "< 1 minute";
 	if (diffMinutes === 1) return "1 minute";
-	return `${diffMinutes} minutes`;
+	if (diffMinutes < 60) return `${diffMinutes} minutes`;
+	if (diffHours === 1) return "1 hour";
+	if (diffHours < 24) return `${diffHours} hours`;
+	if (diffDays === 1) return "1 day";
+	return `${diffDays} days`;
 };
 
 const formatLastUpdated = (updatedAt: string) => {
@@ -358,6 +374,8 @@ export default function WorkflowHistory() {
 										"stopped",
 										"waiting_response",
 										"failed",
+										"in_progress",
+										"pending",
 									].map((status: string) => (
 										<DropdownMenuCheckboxItem
 											key={status}
@@ -374,7 +392,11 @@ export default function WorkflowHistory() {
 											}}
 											className="text-gray-300 hover:bg-background/50"
 										>
-											{status.replace("_", " ")}
+											{status
+												.replace("_", " ")
+												.replace(/\b\w/g, (l) =>
+													l.toUpperCase()
+												)}
 										</DropdownMenuCheckboxItem>
 									))}
 								</div>
@@ -409,7 +431,11 @@ export default function WorkflowHistory() {
 					<div className="mb-4 text-sm text-gray-400">
 						Filters applied:{" "}
 						{statusFilter
-							.map((s: string) => s.replace("_", " "))
+							.map((s: string) =>
+								s
+									.replace("_", " ")
+									.replace(/\b\w/g, (l) => l.toUpperCase())
+							)
 							.join(", ")}
 					</div>
 				)}
