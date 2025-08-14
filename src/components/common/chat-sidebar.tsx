@@ -34,7 +34,6 @@ import {
 	TimerIcon,
 	PinIcon,
 } from "lucide-react";
-import { useHistory } from "@/hooks/use-history";
 import {
 	Tooltip,
 	TooltipContent,
@@ -43,10 +42,20 @@ import {
 } from "../ui/tooltip";
 import { Skeleton } from "../ui/skeleton";
 import { useWallet } from "@/hooks/use-wallet";
-import { Button } from "../ui/button";
 import { useExecutionStatusStore } from "@/stores/execution-status-store";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { getHistory } from "@/controllers/requests";
+import { prefetchChatData } from "@/utils/chat-utils";
 
 const CHAT_OPTIONS = [1, 5, 10, 15, 20] as const;
+
+interface WorkflowItem {
+	requestId: string;
+	id?: string;
+	agentId: string;
+	status: string;
+	userPrompt?: string;
+}
 
 const getWorkflowIcon = (status: string) => {
 	switch (status) {
@@ -61,85 +70,167 @@ const getWorkflowIcon = (status: string) => {
 	}
 };
 
+const WorkflowItem = React.memo(
+	({
+		workflow,
+		index,
+		sidebarIsExpanded,
+		handleMenuSelectOpenChange,
+		onPrefetch,
+	}: {
+		workflow: WorkflowItem;
+		index: number;
+		sidebarIsExpanded: boolean;
+		handleMenuSelectOpenChange: (open: boolean) => void;
+		onPrefetch: (workflowId: string) => void;
+	}) => {
+		const Icon = getWorkflowIcon(workflow.status);
+
+		return (
+			<SidebarMenuItem
+				key={workflow.requestId || workflow.id || index}
+				className="w-full"
+			>
+				<SidebarMenuButton asChild className="p-1 w-full">
+					<div className="w-full font-medium hover:text-primary-foreground transition-colors duration-150">
+						<Link
+							href={`/chat/agent/${workflow.agentId}?workflowId=${workflow.requestId}`}
+							className="w-full flex items-center justify-center gap-x-1.5"
+							onMouseEnter={() =>
+								onPrefetch(
+									workflow.requestId || workflow.id || ""
+								)
+							}
+						>
+							{Icon && <Icon className="!size-[19px]" />}
+							{sidebarIsExpanded && (
+								<div className="flex items-center !w-full flex-1 min-w-0">
+									<div className="flex flex-col w-[140px] min-w-0">
+										<TooltipProvider>
+											<Tooltip>
+												<TooltipTrigger asChild>
+													<span className="text-sm text-ellipsis whitespace-nowrap overflow-hidden cursor-pointer">
+														{workflow.userPrompt ||
+															workflow.requestId}
+													</span>
+												</TooltipTrigger>
+												<TooltipContent>
+													<p className="max-w-xs">
+														{workflow.userPrompt ||
+															workflow.requestId}
+													</p>
+												</TooltipContent>
+											</Tooltip>
+										</TooltipProvider>
+									</div>
+									<div className="flex-1" />
+								</div>
+							)}
+						</Link>
+						{sidebarIsExpanded && (
+							<Select
+								onOpenChange={handleMenuSelectOpenChange}
+								defaultValue="Left"
+							>
+								<SelectTrigger>
+									<MoreVerticalIcon className="!size-4 flex-shrink-0" />
+								</SelectTrigger>
+								<SelectContent>
+									{["Left", "Right"].map((side) => (
+										<SelectItem key={side} value={side}>
+											{side}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						)}
+					</div>
+				</SidebarMenuButton>
+			</SidebarMenuItem>
+		);
+	}
+);
+
+WorkflowItem.displayName = "WorkflowItem";
+
 const ChatSidebar = React.memo(() => {
 	const [chatCount, setChatCount] = useState(5);
 	const [isExpanded, setIsExpanded] = useState(false);
 	const [isSelectOpen, setIsSelectOpen] = useState(false);
 	const [isMenuSelectOpen, setIsMenuSelectOpen] = useState(false);
-	const [isRefreshing, setIsRefreshing] = useState(false);
 	const [isPinned, setIsPinned] = useState(false);
-	const [isAutoRefreshing, setIsAutoRefreshing] = useState(false);
 	const sidebarRef = useRef<HTMLDivElement>(null);
-	const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-	const { history, loading, error, fetchHistory } = useHistory(chatCount);
-	const { address } = useWallet();
-	const { isRunning, responseId } = useExecutionStatusStore();
+	const { address, skyBrowser } = useWallet();
+	const { isRunning } = useExecutionStatusStore();
+	const queryClient = useQueryClient();
 
 	const hasWallet = !!address;
 
-	// Memoize visible items to prevent unnecessary re-renders
+	const { data, refetch, isRefetching, isLoading, error } = useQuery({
+		queryKey: ["history", chatCount, address],
+		queryFn: async () => {
+			const response = await getHistory(
+				{ limit: chatCount },
+				skyBrowser || undefined,
+				address ? { address } : undefined
+			);
+
+			if (response.workflows && Array.isArray(response.workflows)) {
+				return response.workflows;
+			} else if (response.success && response.data?.requests) {
+				return response.data.requests;
+			}
+			return [];
+		},
+		enabled: !!address && !!skyBrowser,
+		refetchInterval: isRunning ? 10000 : false,
+		staleTime: 1000 * 60 * 5,
+		gcTime: 1000 * 60 * 30,
+		refetchOnWindowFocus: false,
+		refetchOnMount: false,
+		refetchOnReconnect: false,
+	});
+
+	const handlePrefetchChatData = useCallback(
+		(workflowId: string) => {
+			prefetchChatData(workflowId, queryClient);
+		},
+		[queryClient]
+	);
+
+	const history = data || [];
+
 	const visibleItems = useMemo(() => {
 		return hasWallet && history.length > 0
 			? history.slice(0, chatCount)
 			: [];
 	}, [hasWallet, history, chatCount]);
 
-	// Memoize sidebar expansion state
 	const sidebarIsExpanded = useMemo(() => {
 		return isPinned || isExpanded;
 	}, [isPinned, isExpanded]);
 
-	// Auto-fetch history when workflow execution starts
-	useEffect(() => {
-		if (isRunning && hasWallet) {
-			console.log("🚀 Workflow started, fetching initial history");
-			fetchHistory();
+	const shouldShowError = useMemo(() => {
+		return error && sidebarIsExpanded;
+	}, [error, sidebarIsExpanded]);
 
-			// Start polling every 10 seconds
-			pollingIntervalRef.current = setInterval(() => {
+	const shouldShowLoading = useMemo(() => {
+		return isLoading && history.length === 0;
+	}, [isLoading, history.length]);
+
+	useEffect(() => {
+		if (hasWallet) {
+			if (isRunning) {
+				console.log("🚀 Workflow started, refetching history");
+			} else {
 				console.log(
-					"🔄 Auto-fetching history during workflow execution"
+					"✅ Workflow completed, fetching final history update"
 				);
-				setIsAutoRefreshing(true);
-				// Use setTimeout to reset the auto-refresh indicator after a short delay
-				setTimeout(() => setIsAutoRefreshing(false), 1000);
-				fetchHistory();
-			}, 10000);
+			}
+			refetch();
 		}
-
-		// Cleanup function to stop polling
-		return () => {
-			if (pollingIntervalRef.current) {
-				clearInterval(pollingIntervalRef.current);
-				pollingIntervalRef.current = null;
-			}
-		};
-	}, [isRunning, hasWallet, fetchHistory]);
-
-	// Stop polling when workflow completes
-	useEffect(() => {
-		if (!isRunning && pollingIntervalRef.current) {
-			console.log("✅ Workflow completed, stopping history polling");
-			clearInterval(pollingIntervalRef.current);
-			pollingIntervalRef.current = null;
-
-			// Fetch final history update
-			if (hasWallet) {
-				fetchHistory();
-			}
-		}
-	}, [isRunning, hasWallet, fetchHistory]);
-
-	// Cleanup on unmount
-	useEffect(() => {
-		return () => {
-			if (pollingIntervalRef.current) {
-				clearInterval(pollingIntervalRef.current);
-				pollingIntervalRef.current = null;
-			}
-		};
-	}, []);
+	}, [isRunning, hasWallet, refetch]);
 
 	const handleMouseEnter = useCallback(() => {
 		if (!isPinned) {
@@ -153,83 +244,67 @@ const ChatSidebar = React.memo(() => {
 		}
 	}, [isPinned, isSelectOpen, isMenuSelectOpen]);
 
-	const handleSelectOpenChange = useCallback(
-		(open: boolean) => {
-			setIsSelectOpen(open);
+	const createSelectHandler = useCallback(
+		(setterFn: (open: boolean) => void, otherSelectOpen: boolean) => {
+			return (open: boolean) => {
+				setterFn(open);
 
-			if (open) {
-				if (!isPinned) setIsExpanded(true);
-			} else {
-				setTimeout(() => {
-					if (
-						sidebarRef.current &&
-						!sidebarRef.current.matches(":hover") &&
-						!isMenuSelectOpen &&
-						!isPinned
-					) {
-						setIsExpanded(false);
-					}
-				}, 50);
-			}
+				if (open) {
+					if (!isPinned) setIsExpanded(true);
+				} else {
+					setTimeout(() => {
+						if (
+							sidebarRef.current &&
+							!sidebarRef.current.matches(":hover") &&
+							!otherSelectOpen &&
+							!isPinned
+						) {
+							setIsExpanded(false);
+						}
+					}, 50);
+				}
+			};
 		},
-		[isMenuSelectOpen, isPinned]
+		[isPinned]
 	);
 
-	const handleMenuSelectOpenChange = useCallback(
-		(open: boolean) => {
-			setIsMenuSelectOpen(open);
-
-			if (open) {
-				if (!isPinned) setIsExpanded(true);
-			} else {
-				setTimeout(() => {
-					if (
-						sidebarRef.current &&
-						!sidebarRef.current.matches(":hover") &&
-						!isSelectOpen &&
-						!isPinned
-					) {
-						setIsExpanded(false);
-					}
-				}, 50);
-			}
-		},
-		[isSelectOpen, isPinned]
+	const handleSelectOpenChange = useMemo(
+		() => createSelectHandler(setIsSelectOpen, isMenuSelectOpen),
+		[createSelectHandler, isMenuSelectOpen]
 	);
 
-	const handleChatCountChange = useCallback(
-		(value: string) => {
-			const newCount = Number(value);
-			setChatCount(newCount);
-			// Fetch history with new limit
-			fetchHistory(newCount);
-		},
-		[fetchHistory]
+	const handleMenuSelectOpenChange = useMemo(
+		() => createSelectHandler(setIsMenuSelectOpen, isSelectOpen),
+		[createSelectHandler, isSelectOpen]
 	);
+
+	const handleChatCountChange = useCallback((value: string) => {
+		setChatCount(Number(value));
+	}, []);
 
 	const handleRefresh = useCallback(async () => {
-		if (isRefreshing) return;
-		setIsRefreshing(true);
-		try {
-			await fetchHistory();
-		} finally {
-			setIsRefreshing(false);
+		if (!isRefetching) {
+			refetch();
 		}
-	}, [fetchHistory, isRefreshing]);
+	}, [refetch, isRefetching]);
+
+	const handlePinToggle = useCallback(() => {
+		setIsPinned(!isPinned);
+	}, [isPinned]);
 
 	return (
 		<Sidebar
 			ref={sidebarRef}
 			collapsible="none"
-			className={`rounded-lg transition-all duration-300 ease-in-out flex flex-col   ${
+			className={`rounded-lg transition-all duration-300 ease-in-out flex flex-col ${
 				!sidebarIsExpanded
 					? "w-[calc(var(--sidebar-width-icon)+5px)]!"
 					: "!w-56"
-			} `}
+			}`}
 			onMouseEnter={handleMouseEnter}
 			onMouseLeave={handleMouseLeave}
 		>
-			<SidebarContent className="w-full  overflow-hidden z-50">
+			<SidebarContent className="w-full overflow-hidden z-50">
 				<SidebarHeader>
 					<SidebarMenu className="w-full px-1">
 						<SidebarMenuItem
@@ -275,21 +350,27 @@ const ChatSidebar = React.memo(() => {
 								{sidebarIsExpanded && error && (
 									<button
 										onClick={handleRefresh}
-										disabled={isRefreshing}
+										disabled={isRefetching}
 										className="p-1 hover:bg-accent rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
 										title="Refresh history"
 									>
-										<RefreshCw className={`h-3 w-3 `} />
+										<RefreshCw
+											className={`h-3 w-3 ${
+												isRefetching
+													? "animate-spin"
+													: ""
+											}`}
+										/>
 									</button>
 								)}
 
 								<div
-									onClick={() => setIsPinned(!isPinned)}
+									onClick={handlePinToggle}
 									className={`!w-fit !h-7 px-2 flex items-center justify-center rounded-md transition-colors duration-200 ${
 										sidebarIsExpanded ? "block" : "hidden"
 									} ${isPinned ? "bg-background" : ""}`}
 								>
-									<PinIcon className="!size-4  rotate-45" />
+									<PinIcon className="!size-4 rotate-45" />
 								</div>
 							</div>
 						</SidebarMenuItem>
@@ -302,10 +383,9 @@ const ChatSidebar = React.memo(() => {
 							sidebarIsExpanded ? "items-start" : "items-center"
 						}`}
 					>
-						{/* Show loading skeletons only on initial load */}
-						{loading && history.length === 0 ? (
+						{shouldShowLoading ? (
 							<div className="w-full flex flex-col gap-2">
-								{[...Array(3)].map((_, index) => (
+								{Array.from({ length: 3 }, (_, index) => (
 									<Skeleton
 										key={index}
 										className="h-6 w-full bg-background/50 rounded-md"
@@ -314,109 +394,32 @@ const ChatSidebar = React.memo(() => {
 							</div>
 						) : (
 							<>
-								{/* Only show error and history when not loading */}
-								{error && sidebarIsExpanded && (
+								{shouldShowError && (
 									<div className="px-2 py-1 text-xs text-red-500">
-										Failed to load history: {error}
+										Failed to load history:{" "}
+										{error?.message || "Unknown error"}
 									</div>
 								)}
-								{visibleItems.length === 0 &&
-									!error &&
-									!loading &&
-									hasWallet && <></>}
-								{!hasWallet && !error && !loading && <></>}
-								{visibleItems.map((workflow, index) => {
-									const Icon = getWorkflowIcon(
-										workflow.status
-									);
-									return (
-										<SidebarMenuItem
+								{visibleItems.map(
+									(workflow: WorkflowItem, index: number) => (
+										<WorkflowItem
 											key={
 												workflow.requestId ||
 												workflow.id ||
 												index
 											}
-											className="w-full"
-										>
-											<SidebarMenuButton
-												asChild
-												className="p-1 w-full"
-											>
-												<div className="w-full font-medium hover:text-primary-foreground transition-colors duration-150 ">
-													<Link
-														href={`/chat/agent/${workflow.agentId}?workflowId=${workflow.requestId}`}
-														className="w-full flex items-center justify-center gap-x-1.5"
-													>
-														{Icon && (
-															<Icon
-																className={`!size-[19px]`}
-															/>
-														)}
-														{sidebarIsExpanded && (
-															<div className="flex items-center !w-full flex-1 min-w-0">
-																<div className="flex flex-col w-[140px] min-w-0">
-																	<TooltipProvider>
-																		<Tooltip>
-																			<TooltipTrigger
-																				asChild
-																			>
-																				<span className="text-sm text-ellipsis whitespace-nowrap overflow-hidden cursor-pointer">
-																					{workflow.userPrompt ||
-																						workflow.requestId}
-																				</span>
-																			</TooltipTrigger>
-																			<TooltipContent>
-																				<p className="max-w-xs">
-																					{workflow.userPrompt ||
-																						workflow.requestId}
-																				</p>
-																			</TooltipContent>
-																		</Tooltip>
-																	</TooltipProvider>
-																	{/* Status text removed as per instruction */}
-																</div>
-																<div className="flex-1" />
-															</div>
-														)}
-													</Link>
-													{sidebarIsExpanded && (
-														<Select
-															onOpenChange={
-																handleMenuSelectOpenChange
-															}
-															defaultValue="Left"
-														>
-															<SelectTrigger>
-																<MoreVerticalIcon className="!size-4 flex-shrink-0" />
-															</SelectTrigger>
-															<SelectContent>
-																{[
-																	"Left",
-																	"Right",
-																].map(
-																	(side) => (
-																		<SelectItem
-																			key={
-																				side
-																			}
-																			value={
-																				side
-																			}
-																		>
-																			{
-																				side
-																			}
-																		</SelectItem>
-																	)
-																)}
-															</SelectContent>
-														</Select>
-													)}
-												</div>
-											</SidebarMenuButton>
-										</SidebarMenuItem>
-									);
-								})}
+											workflow={workflow}
+											index={index}
+											sidebarIsExpanded={
+												sidebarIsExpanded
+											}
+											handleMenuSelectOpenChange={
+												handleMenuSelectOpenChange
+											}
+											onPrefetch={handlePrefetchChatData}
+										/>
+									)
+								)}
 							</>
 						)}
 					</SidebarMenu>
@@ -425,5 +428,7 @@ const ChatSidebar = React.memo(() => {
 		</Sidebar>
 	);
 });
+
+ChatSidebar.displayName = "ChatSidebar";
 
 export default ChatSidebar;

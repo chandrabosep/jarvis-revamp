@@ -8,7 +8,6 @@ export const useChatMessages = () => {
 		[]
 	);
 
-	// Use the new subnet caching system
 	const {
 		processSubnetData,
 		clearWorkflowCache,
@@ -16,7 +15,6 @@ export const useChatMessages = () => {
 		getCachedSubnets,
 	} = useSubnetCache();
 
-	// Track current workflow ID for caching
 	const currentWorkflowId = useRef<string | null>(null);
 
 	const updateMessagesWithSubnetData = useCallback(
@@ -28,7 +26,6 @@ export const useChatMessages = () => {
 				`🔄 Processing workflow: ${workflowId}, Current: ${currentWorkflowId.current}`
 			);
 
-			// Clear previous workflow cache if switching
 			if (
 				currentWorkflowId.current &&
 				currentWorkflowId.current !== workflowId
@@ -40,10 +37,8 @@ export const useChatMessages = () => {
 				clearWorkflowCache(currentWorkflowId.current);
 			}
 
-			// Set current workflow ID
 			currentWorkflowId.current = workflowId;
 
-			// Process subnet data using the new caching system
 			const newMessages = processSubnetData(
 				workflowId,
 				data.subnets,
@@ -59,14 +54,11 @@ export const useChatMessages = () => {
 				})),
 			});
 
-			// Helper function to check if a message is a duplicate
 			const isDuplicateMessage = (
 				newMsg: ChatMsg,
 				existingMsgs: ChatMsg[]
 			) => {
 				return existingMsgs.some((existingMsg) => {
-					// Only check for exact duplicates of workflow subnet messages
-					// User messages, responses, and other types should not be considered duplicates
 					if (
 						newMsg.type !== "workflow_subnet" ||
 						existingMsg.type !== "workflow_subnet"
@@ -74,12 +66,10 @@ export const useChatMessages = () => {
 						return false;
 					}
 
-					// For subnet messages, check if they're truly duplicates
 					if (
 						newMsg.subnetIndex === existingMsg.subnetIndex &&
 						newMsg.toolName === existingMsg.toolName
 					) {
-						// Check if both are status updates (these can be replaced)
 						const newIsStatusUpdate =
 							newMsg.content === "Processing..." ||
 							newMsg.content === "Waiting for response..." ||
@@ -94,17 +84,14 @@ export const useChatMessages = () => {
 							existingMsg.subnetStatus === "pending" ||
 							existingMsg.subnetStatus === "in_progress";
 
-						// If both are status updates, consider them duplicates
 						if (newIsStatusUpdate && existingIsStatusUpdate) {
 							return true;
 						}
 
-						// If existing is a status update and new has actual content, allow replacement
 						if (existingIsStatusUpdate && !newIsStatusUpdate) {
 							return false;
 						}
 
-						// If both have actual content, check if they're truly the same
 						if (!newIsStatusUpdate && !existingIsStatusUpdate) {
 							return (
 								newMsg.content === existingMsg.content &&
@@ -117,23 +104,18 @@ export const useChatMessages = () => {
 				});
 			};
 
-			// Update chat messages
 			setChatMessages((prevMessages) => {
 				console.log(
 					`🔄 Updating chat messages. Current: ${prevMessages.length}, New: ${newMessages.length}`
 				);
 
-				// Debug: Show current message types
 				const messageTypes = prevMessages.map((msg) => ({
 					type: msg.type,
 					content: msg.content?.slice(0, 30),
 				}));
 				console.log(`📋 Current message types:`, messageTypes);
 
-				// Remove only workflow subnet messages for this workflow to prevent duplicates
-				// Keep user messages, responses, and other non-subnet messages
 				const filteredMessages = prevMessages.filter((msg) => {
-					// Always keep user messages and responses
 					if (msg.type === "user" || msg.type === "response") {
 						console.log(
 							`✅ Keeping ${
@@ -143,7 +125,6 @@ export const useChatMessages = () => {
 						return true;
 					}
 
-					// Keep all non-subnet messages (questions, notifications, etc.)
 					if (msg.type !== "workflow_subnet") {
 						console.log(
 							`✅ Keeping ${
@@ -153,10 +134,7 @@ export const useChatMessages = () => {
 						return true;
 					}
 
-					// For workflow subnet messages, we need to be more selective
-					// Only remove status update messages, keep actual content responses
 					if (msg.subnetIndex !== undefined) {
-						// Check if this is just a status update or actual content
 						const isStatusUpdate =
 							msg.content === "Processing..." ||
 							msg.content === "Waiting for response..." ||
@@ -175,11 +153,10 @@ export const useChatMessages = () => {
 									msg.subnetIndex
 								}: "${msg.content?.slice(0, 50)}..."`
 							);
-							return true; // Keep actual content responses
+							return true;
 						}
 					}
 
-					// Keep subnet messages without subnetIndex (global messages)
 					console.log(
 						`✅ Keeping global subnet message: "${msg.content?.slice(
 							0,
@@ -193,7 +170,6 @@ export const useChatMessages = () => {
 					`📊 After filtering: ${filteredMessages.length} messages preserved`
 				);
 
-				// Filter out duplicate messages from new messages
 				const uniqueNewMessages = newMessages.filter(
 					(newMsg) => !isDuplicateMessage(newMsg, filteredMessages)
 				);
@@ -202,13 +178,11 @@ export const useChatMessages = () => {
 					`📝 Adding ${uniqueNewMessages.length} unique new messages`
 				);
 
-				// Add new unique messages
 				const finalMessages = [
 					...filteredMessages,
 					...uniqueNewMessages,
 				];
 
-				// Safety check: if we somehow lost all messages, keep the original ones
 				if (finalMessages.length === 0 && prevMessages.length > 0) {
 					console.warn(
 						`⚠️ All messages were filtered out! Keeping original messages.`
@@ -220,7 +194,6 @@ export const useChatMessages = () => {
 				return finalMessages;
 			});
 
-			// Update pending notifications
 			const notificationMessages = newMessages.filter(
 				(msg) => msg.type === "notification"
 			);
@@ -241,36 +214,34 @@ export const useChatMessages = () => {
 		setChatMessages([]);
 		setPendingNotifications([]);
 
-		// Clear current workflow tracking and cache
 		if (currentWorkflowId.current) {
 			console.log(
 				`🗑️ Clearing workflow tracking and cache for: ${currentWorkflowId.current}`
 			);
 			clearWorkflowTracking(currentWorkflowId.current);
 			clearWorkflowCache(currentWorkflowId.current);
+
+			import("@/utils/chat-utils").then(({ clearChatCache }) => {
+				clearChatCache(currentWorkflowId.current!);
+			});
+
 			currentWorkflowId.current = null;
 		}
 	}, [clearWorkflowTracking, clearWorkflowCache, chatMessages.length]);
 
-	const resetFeedbackState = useCallback(() => {
-		// Feedback state is now handled by the subnet cache system
-		// This function is kept for backward compatibility
-	}, []);
+	const resetFeedbackState = useCallback(() => {}, []);
 
-	// Get cached subnets for current workflow
 	const getCurrentWorkflowSubnets = useCallback(() => {
 		if (!currentWorkflowId.current) return new Map();
 		return getCachedSubnets(currentWorkflowId.current);
 	}, [getCachedSubnets]);
 
-	// Set workflow ID (useful when switching between workflows)
 	const setWorkflowId = useCallback(
 		(workflowId: string) => {
 			console.log(
 				`🔄 Setting workflow ID: ${workflowId}, Current: ${currentWorkflowId.current}`
 			);
 
-			// Clear previous workflow tracking and cache
 			if (
 				currentWorkflowId.current &&
 				currentWorkflowId.current !== workflowId
@@ -296,7 +267,6 @@ export const useChatMessages = () => {
 		updateMessagesWithSubnetData,
 		clearMessages,
 		resetFeedbackState,
-		// New methods for subnet caching
 		getCurrentWorkflowSubnets,
 		setWorkflowId,
 		currentWorkflowId: currentWorkflowId.current,

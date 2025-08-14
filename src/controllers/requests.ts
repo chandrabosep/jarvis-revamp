@@ -44,3 +44,19 @@ export const getHistory = async (
 	});
 	return response.data;
 };
+
+export const getChatMessages = async (
+	workflowId: string,
+	skyBrowser?: SkyMainBrowser,
+	web3Context?: Web3Context
+): Promise<any> => {
+	const axiosInstance = await getAxiosInstanceWithApiKey(
+		process.env.NEXT_PUBLIC_NFT_USER_AGENT_URL || "",
+		skyBrowser,
+		web3Context
+	);
+	const response = await axiosInstance.get(
+		`/requests/${workflowId}/messages`
+	);
+	return response.data;
+};

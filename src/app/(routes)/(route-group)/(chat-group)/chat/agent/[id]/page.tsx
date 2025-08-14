@@ -15,8 +15,13 @@ import ChatSkeleton from "@/components/common/chat-skeleton";
 import { getOriginalPayload } from "@/controllers/requests";
 import { Web3Context } from "@/types/wallet";
 import SkyMainBrowser from "@decloudlabs/skynet/lib/services/SkyMainBrowser";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+	setCachedChatMessages,
+	getCachedChatMessages,
+	clearChatCache,
+} from "@/utils/chat-utils";
 
-// Import our custom hooks and types
 import { ChatMsg } from "@/types/chat";
 import { useChatMessages } from "@/hooks/use-chat-messages";
 import { useChatScroll } from "@/hooks/use-chat-scroll";
@@ -41,11 +46,11 @@ export default function AgentChatPage() {
 	const [error, setError] = useState<string | null>(null);
 	const [isInFeedbackMode, setIsInFeedbackMode] = useState(false);
 	const { skyBrowser, address } = useWallet();
+	const queryClient = useQueryClient();
 
 	const { currentExecution } = useWorkflowExecutionStore();
 	const { updateExecutionStatus } = useExecutionStatusStore();
 
-	// Custom hooks
 	const {
 		chatMessages,
 		setChatMessages,
@@ -56,6 +61,23 @@ export default function AgentChatPage() {
 		resetFeedbackState,
 		setWorkflowId,
 	} = useChatMessages();
+
+	useEffect(() => {
+		if (urlWorkflowId && chatMessages.length > 0) {
+			setCachedChatMessages(urlWorkflowId, chatMessages);
+
+			queryClient.setQueryData(["chat", urlWorkflowId], chatMessages);
+		}
+	}, [chatMessages, urlWorkflowId, queryClient]);
+
+	useEffect(() => {
+		if (urlWorkflowId) {
+			const cachedMessages = getCachedChatMessages(urlWorkflowId);
+			if (cachedMessages && cachedMessages.length > 0) {
+				setChatMessages(cachedMessages);
+			}
+		}
+	}, [urlWorkflowId, setChatMessages]);
 
 	const {
 		messagesEndRef,
@@ -68,10 +90,8 @@ export default function AgentChatPage() {
 	const hasAutoSubmittedRef = useRef(false);
 	const lastQuestionRef = useRef<string | null>(null);
 
-	// Use scroll hook for new messages
 	useScrollOnNewMessages(chatMessages.length);
 
-	// Workflow execution hook
 	const {
 		isExecuting,
 		setIsExecuting,
@@ -93,10 +113,9 @@ export default function AgentChatPage() {
 		setIsInFeedbackMode,
 		resetFeedbackState,
 		lastQuestionRef,
-		setWorkflowId, // Pass the setWorkflowId function
+		setWorkflowId,
 	});
 
-	// Feedback hook
 	const {
 		isSubmittingFeedback,
 		handleFeedbackSubmit,
@@ -114,7 +133,6 @@ export default function AgentChatPage() {
 		setIsInFeedbackMode,
 	});
 
-	// Extract original payload for existing workflows
 	useEffect(() => {
 		const extractOriginalPayload = async () => {
 			if (urlWorkflowId && skyBrowser && address) {
@@ -150,7 +168,6 @@ export default function AgentChatPage() {
 		extractOriginalPayload();
 	}, [urlWorkflowId, skyBrowser, address, setChatMessages]);
 
-	// Handle mode change
 	const handleModeChange = (newMode: "chat" | "agent") => {
 		if (newMode === "chat") {
 			setSelectedAgent(null);
@@ -160,7 +177,6 @@ export default function AgentChatPage() {
 		}
 	};
 
-	// Handle prompt submission
 	const handlePromptSubmit = async (
 		message: string,
 		selectedAgentId?: string
@@ -191,19 +207,16 @@ export default function AgentChatPage() {
 		}
 	};
 
-	// Handle stop execution
 	const handleStopExecution = async () => {
 		if (!skyBrowser || !address) return;
 		await stopExecution(skyBrowser, address);
 	};
 
-	// Handle resume execution
 	const handleResumeExecution = async () => {
 		if (!skyBrowser || !address) return;
 		await resumeExecution(skyBrowser, address);
 	};
 
-	// Handle notification responses
 	const handleNotificationYes = async (notification: ChatMsg) => {
 		setPendingNotifications((prev) =>
 			prev.filter((n) => n.id !== notification.id)
@@ -217,7 +230,6 @@ export default function AgentChatPage() {
 		await handleStopExecution();
 	};
 
-	// Cleanup effect to reset execution status on unmount
 	useEffect(() => {
 		return () => {
 			updateExecutionStatus({
@@ -228,7 +240,6 @@ export default function AgentChatPage() {
 		};
 	}, [updateExecutionStatus]);
 
-	// Effect to update execution status based on workflow state
 	useEffect(() => {
 		if (isExecuting && currentWorkflowId) {
 			updateExecutionStatus({
@@ -244,7 +255,6 @@ export default function AgentChatPage() {
 		}
 	}, [isExecuting, currentWorkflowId, updateExecutionStatus]);
 
-	// Effect to update current subnet when workflow data changes
 	useEffect(() => {
 		if (
 			currentWorkflowData?.subnets &&
@@ -262,7 +272,6 @@ export default function AgentChatPage() {
 		}
 	}, [currentWorkflowData, updateExecutionStatus]);
 
-	// Handle workflow management based on URL
 	useEffect(() => {
 		if (isLoading || !skyBrowser || !address) return;
 
@@ -272,8 +281,13 @@ export default function AgentChatPage() {
 					clearWorkflow();
 				}
 
-				// Clear current state
 				clearMessages();
+
+				const cachedMessages = getCachedChatMessages(urlWorkflowId);
+				if (cachedMessages && cachedMessages.length > 0) {
+					setChatMessages(cachedMessages);
+				}
+
 				startPollingExistingWorkflow(
 					urlWorkflowId,
 					skyBrowser,
@@ -281,7 +295,6 @@ export default function AgentChatPage() {
 				);
 			}
 		} else if (currentWorkflowId && !urlWorkflowId) {
-			// If there's no workflow ID in URL but we have a current workflow, clear everything
 			clearWorkflow();
 			clearMessages();
 		}
@@ -293,10 +306,10 @@ export default function AgentChatPage() {
 		currentWorkflowId,
 		clearWorkflow,
 		clearMessages,
+		setChatMessages,
 		startPollingExistingWorkflow,
 	]);
 
-	// Auto-submit prompt after navigation from create page
 	useEffect(() => {
 		if (isLoading) return;
 
@@ -342,7 +355,6 @@ export default function AgentChatPage() {
 		currentWorkflowId,
 	]);
 
-	// Load agent data
 	useEffect(() => {
 		let isMounted = true;
 		const fetchAgent = async () => {
