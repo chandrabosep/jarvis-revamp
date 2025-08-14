@@ -187,7 +187,7 @@ export const useFeedback = ({
 			};
 			setChatMessages((prev) => [...prev, submittingMessage]);
 
-			await submitFeedbackToAPI(question, "Proceed with current result");
+			await submitFeedbackToAPI(question, "Yes, proceed");
 
 			setChatMessages((prev) =>
 				prev.filter((msg) => msg.id !== submittingMessage.id)

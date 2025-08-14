@@ -442,6 +442,7 @@ export default function AgentChatPage() {
 									message.questionData?.type !==
 										"authentication"
 								}
+								workflowStatus={workflowStatus}
 							/>
 						))}
 						<div ref={messagesEndRef} />

@@ -94,6 +94,7 @@ interface ChatMessageProps {
 		feedback: string
 	) => Promise<void>;
 	showFeedbackButtons?: boolean;
+	workflowStatus?: string;
 }
 
 export function ChatMessage({
@@ -105,9 +106,44 @@ export function ChatMessage({
 	onFeedbackProceed,
 	onFeedbackSubmit,
 	showFeedbackButtons = false,
+	workflowStatus,
 }: ChatMessageProps) {
+	// Interactive elements (feedback buttons, auth buttons, notification buttons) are only shown
+	// when the workflow/subnet status is "waiting_response". For all other statuses
+	// (pending, in_progress, done, failed, etc.), these elements are hidden to prevent
+	// user interaction during processing.
 	const [showFeedbackInput, setShowFeedbackInput] = useState(false);
 	const [feedbackText, setFeedbackText] = useState("");
+	const [hideAuthButton, setHideAuthButton] = useState(false);
+	const [hideFeedbackButtons, setHideFeedbackButtons] = useState(false);
+	const [hideNotificationButtons, setHideNotificationButtons] =
+		useState(false);
+
+	// Helper function to check if interactive elements should be hidden
+	const shouldHideInteractiveElements = () => {
+		// Hide interactive elements for all statuses except "waiting_response"
+		// Only show interactive elements when the system is explicitly waiting for user input
+		// This includes: pending, in_progress, done, failed, etc.
+		const shouldHide =
+			message.subnetStatus !== "waiting_response" &&
+			workflowStatus !== "waiting_response";
+
+		// Additional check: if we have a specific subnet status, prioritize it
+		if (message.subnetStatus) {
+			return message.subnetStatus !== "waiting_response";
+		}
+
+		// Fall back to overall workflow status
+		return shouldHide;
+	};
+
+	// Helper function to check if specific elements should be hidden
+	const shouldHideAuthButton = () =>
+		shouldHideInteractiveElements() || hideAuthButton;
+	const shouldHideFeedbackButtons = () =>
+		shouldHideInteractiveElements() || hideFeedbackButtons;
+	const shouldHideNotificationButtons = () =>
+		shouldHideInteractiveElements() || hideNotificationButtons;
 
 	// User message - the initial prompt
 	if (message.type === "user") {
@@ -262,15 +298,20 @@ export function ChatMessage({
 									convertUrlsToLinks(message.content)
 								)}
 							</div>
-							{/* Show Yes/No buttons if this is a pending notification */}
+							{/* Show Yes/No buttons if this is a pending notification and workflow is not in progress */}
 							{isPendingNotification &&
 								onNotificationYes &&
-								onNotificationNo && (
+								onNotificationNo &&
+								!shouldHideNotificationButtons() && (
 									<div className="flex gap-3 mt-4">
 										<Button
-											onClick={() =>
-												onNotificationYes(message)
-											}
+											onClick={() => {
+												// Hide the notification buttons immediately when clicked
+												setHideNotificationButtons(
+													true
+												);
+												onNotificationYes(message);
+											}}
 											variant="outline"
 											size="sm"
 											className="flex items-center gap-2 text-green-500 hover:text-green-400 bg-green-950/60 hover:bg-green-950/70 border border-green-800/50 hover:border-green-800/70"
@@ -279,9 +320,13 @@ export function ChatMessage({
 											Yes
 										</Button>
 										<Button
-											onClick={() =>
-												onNotificationNo(message)
-											}
+											onClick={() => {
+												// Hide the notification buttons immediately when clicked
+												setHideNotificationButtons(
+													true
+												);
+												onNotificationNo(message);
+											}}
 											variant="outline"
 											size="sm"
 											className="flex items-center gap-2 text-red-500 hover:text-red-400 bg-red-950/60 hover:bg-red-950/70 border border-red-800/50 hover:border-red-800/70"
@@ -363,7 +408,7 @@ export function ChatMessage({
 									);
 								})()}
 							</div>
-							{isAuthentication ? (
+							{isAuthentication && !shouldHideAuthButton() ? (
 								<div className="mt-3 space-y-2">
 									{message.questionData?.expiresAt && (
 										<p className="text-xs text-gray-400 mt-2">
@@ -380,6 +425,9 @@ export function ChatMessage({
 									)}
 									<Button
 										onClick={() => {
+											// Hide the button immediately when clicked
+											setHideAuthButton(true);
+
 											const questionText =
 												message.questionData?.text ||
 												message.content;
@@ -450,12 +498,20 @@ export function ChatMessage({
 										Authenticate
 									</Button>
 								</div>
-							) : showFeedbackButtons ? (
+							) : null}
+
+							{showFeedbackButtons &&
+							!shouldHideFeedbackButtons() ? (
 								<div className="mt-4 space-y-3">
 									{!showFeedbackInput ? (
 										<div className="flex gap-3">
 											<Button
 												onClick={async () => {
+													// Hide the feedback buttons immediately when clicked
+													setHideFeedbackButtons(
+														true
+													);
+
 													if (
 														onFeedbackProceed &&
 														message.questionData
@@ -464,7 +520,7 @@ export function ChatMessage({
 														await onFeedbackProceed(
 															message.questionData
 																.text,
-															"Proceed with current result"
+															"Yes, proceed"
 														);
 													}
 												}}
@@ -476,9 +532,13 @@ export function ChatMessage({
 												Yes, proceed
 											</Button>
 											<Button
-												onClick={() =>
-													setShowFeedbackInput(true)
-												}
+												onClick={() => {
+													// Hide the feedback buttons immediately when clicked
+													setHideFeedbackButtons(
+														true
+													);
+													setShowFeedbackInput(true);
+												}}
 												variant="outline"
 												size="sm"
 												className="flex items-center gap-2 text-blue-500 hover:text-blue-400 bg-blue-950/60 hover:bg-blue-950/70 border border-blue-800/50 hover:border-blue-800/70"
@@ -502,6 +562,11 @@ export function ChatMessage({
 												/>
 												<Button
 													onClick={async () => {
+														// Hide the feedback input immediately when submitted
+														setHideFeedbackButtons(
+															true
+														);
+
 														if (
 															onFeedbackSubmit &&
 															message.questionData
