@@ -1,6 +1,6 @@
-import { useState, useCallback } from "react";
-import { ChatMsg, StatusTransition, FeedbackState } from "@/types/chat";
-import { parseAgentResponse, createContentHash } from "@/utils/message-parser";
+import { useState, useCallback, useRef } from "react";
+import { ChatMsg } from "@/types/chat";
+import { useSubnetCache } from "./use-subnet-cache";
 
 export const useChatMessages = () => {
 	const [chatMessages, setChatMessages] = useState<ChatMsg[]>([]);
@@ -8,483 +8,297 @@ export const useChatMessages = () => {
 		[]
 	);
 
-	// Feedback state management
-	const [preFeedbackContent, setPreFeedbackContent] = useState<
-		Map<number, string>
-	>(new Map());
-	const [feedbackGivenForSubnet, setFeedbackGivenForSubnet] = useState<
-		Set<number>
-	>(new Set());
-	const [subnetPreviousStatus, setSubnetPreviousStatus] = useState<
-		Map<number, string>
-	>(new Map());
-	const [postFeedbackProcessing, setPostFeedbackProcessing] = useState<
-		Map<number, boolean>
-	>(new Map());
+	// Use the new subnet caching system
+	const {
+		processSubnetData,
+		clearWorkflowCache,
+		clearWorkflowTracking,
+		getCachedSubnets,
+	} = useSubnetCache();
+
+	// Track current workflow ID for caching
+	const currentWorkflowId = useRef<string | null>(null);
 
 	const updateMessagesWithSubnetData = useCallback(
 		(data: any, lastQuestionRef: React.MutableRefObject<string | null>) => {
+			const workflowId =
+				data.requestId || data.workflowId || `workflow_${Date.now()}`;
+
+			console.log(
+				`🔄 Processing workflow: ${workflowId}, Current: ${currentWorkflowId.current}`
+			);
+
+			// Clear previous workflow cache if switching
 			if (
-				!data ||
-				!Array.isArray(data.subnets) ||
-				data.subnets.length === 0
+				currentWorkflowId.current &&
+				currentWorkflowId.current !== workflowId
 			) {
-				return;
+				console.log(
+					`🔄 Switching workflows: ${currentWorkflowId.current} -> ${workflowId}`
+				);
+				clearWorkflowTracking(currentWorkflowId.current);
+				clearWorkflowCache(currentWorkflowId.current);
 			}
 
-			const statusTransitions: Map<number, StatusTransition> = new Map();
+			// Set current workflow ID
+			currentWorkflowId.current = workflowId;
 
-			// Calculate status transitions
-			data.subnets.forEach((subnet: any, index: number) => {
-				const prevStatus = subnetPreviousStatus.get(index);
-				const isRegenerating =
-					prevStatus === "waiting_response" &&
-					subnet.status === "in_progress";
-				const isShowingQuestion =
-					prevStatus === "in_progress" &&
-					subnet.status === "waiting_response";
+			// Process subnet data using the new caching system
+			const newMessages = processSubnetData(
+				workflowId,
+				data.subnets,
+				lastQuestionRef
+			);
 
-				statusTransitions.set(index, {
-					prev: prevStatus,
-					current: subnet.status,
-					isRegenerating,
-					isShowingQuestion,
-				});
-
-				if (isRegenerating) {
-					console.log(
-						`Subnet ${index} transitioning from waiting_response to in_progress - will regenerate`
-					);
-					setPostFeedbackProcessing((prev) =>
-						new Map(prev).set(index, true)
-					);
-					setFeedbackGivenForSubnet((prev) =>
-						new Set(prev).add(index)
-					);
-				}
-
-				if (isShowingQuestion) {
-					console.log(
-						`Subnet ${index} transitioning from in_progress to waiting_response - will show question UI with new data`
-					);
-				}
-
-				setSubnetPreviousStatus((prev) =>
-					new Map(prev).set(index, subnet.status)
-				);
+			console.log(`🔍 Subnet data processing results:`, {
+				subnetCount: data.subnets?.length || 0,
+				newMessageCount: newMessages.length,
+				newMessageTypes: newMessages.map((msg) => ({
+					type: msg.type,
+					content: msg.content?.slice(0, 50),
+				})),
 			});
 
-			setChatMessages((prevMessages) => {
-				let updatedMessages = [...prevMessages];
+			// Helper function to check if a message is a duplicate
+			const isDuplicateMessage = (
+				newMsg: ChatMsg,
+				existingMsgs: ChatMsg[]
+			) => {
+				return existingMsgs.some((existingMsg) => {
+					// Only check for exact duplicates of workflow subnet messages
+					// User messages, responses, and other types should not be considered duplicates
+					if (
+						newMsg.type !== "workflow_subnet" ||
+						existingMsg.type !== "workflow_subnet"
+					) {
+						return false;
+					}
 
-				data.subnets.forEach((subnet: any, index: number) => {
-					const sourceId = `subnet_${index}_${subnet.status}`;
-					const transition = statusTransitions.get(index);
-					const isRegenerating = transition?.isRegenerating || false;
-					const isShowingQuestion =
-						transition?.isShowingQuestion || false;
+					// For subnet messages, check if they're truly duplicates
+					if (
+						newMsg.subnetIndex === existingMsg.subnetIndex &&
+						newMsg.toolName === existingMsg.toolName
+					) {
+						// Check if both are status updates (these can be replaced)
+						const newIsStatusUpdate =
+							newMsg.content === "Processing..." ||
+							newMsg.content === "Waiting for response..." ||
+							newMsg.content === "Failed to process" ||
+							newMsg.subnetStatus === "pending" ||
+							newMsg.subnetStatus === "in_progress";
 
-					let existingMessageIndex = updatedMessages.findIndex(
-						(msg) =>
-							msg.type === "workflow_subnet" &&
-							msg.subnetIndex === index &&
-							!msg.isRegenerated
-					);
+						const existingIsStatusUpdate =
+							existingMsg.content === "Processing..." ||
+							existingMsg.content === "Waiting for response..." ||
+							existingMsg.content === "Failed to process" ||
+							existingMsg.subnetStatus === "pending" ||
+							existingMsg.subnetStatus === "in_progress";
 
-					if (subnet.status === "pending") {
-						if (existingMessageIndex >= 0) {
-							updatedMessages.splice(existingMessageIndex, 1);
-						}
-					} else if (subnet.status === "in_progress") {
-						// Filter out old messages
-						updatedMessages = updatedMessages.filter((msg) => {
-							if (
-								msg.type === "answer" &&
-								msg.subnetIndex === index
-							)
-								return false;
-							if (
-								(msg.type === "question" ||
-									msg.type === "notification") &&
-								msg.questionData?.itemID === subnet.itemID
-							)
-								return false;
-							if (msg.answer && msg.subnetIndex === index)
-								return false;
+						// If both are status updates, consider them duplicates
+						if (newIsStatusUpdate && existingIsStatusUpdate) {
 							return true;
-						});
+						}
 
-						const isProcessingAfterFeedback =
-							isRegenerating ||
-							postFeedbackProcessing.get(index) ||
-							false;
+						// If existing is a status update and new has actual content, allow replacement
+						if (existingIsStatusUpdate && !newIsStatusUpdate) {
+							return false;
+						}
 
-						if (isProcessingAfterFeedback) {
-							console.log(
-								`Showing processing after feedback for subnet ${index}`
+						// If both have actual content, check if they're truly the same
+						if (!newIsStatusUpdate && !existingIsStatusUpdate) {
+							return (
+								newMsg.content === existingMsg.content &&
+								newMsg.subnetStatus === existingMsg.subnetStatus
 							);
-							updatedMessages = updatedMessages.filter((msg) => {
-								if (
-									msg.type === "workflow_subnet" &&
-									msg.subnetIndex === index &&
-									!msg.isRegenerated
-								)
-									return false;
-								if (
-									(msg.type === "question" ||
-										msg.type === "notification") &&
-									msg.questionData?.itemID === subnet.itemID
-								)
-									return false;
-								if (
-									msg.type === "answer" &&
-									msg.subnetIndex === index
-								)
-									return false;
-								return true;
-							});
-
-							const processingMessage: ChatMsg = {
-								id: `subnet_${index}_processing_after_feedback_${Date.now()}`,
-								type: "workflow_subnet",
-								content: "Processing...",
-								timestamp: new Date(),
-								subnetStatus: "in_progress",
-								toolName: subnet.toolName,
-								subnetIndex: index,
-								sourceId: `${sourceId}_processing_after_feedback`,
-								isRegenerated: true,
-							};
-
-							updatedMessages.push(processingMessage);
-						} else {
-							const progressMessage: ChatMsg = {
-								id: `subnet_${index}_${Date.now()}`,
-								type: "workflow_subnet",
-								content: "Processing...",
-								timestamp: new Date(),
-								subnetStatus: "in_progress",
-								toolName: subnet.toolName,
-								subnetIndex: index,
-								sourceId: sourceId,
-							};
-
-							if (existingMessageIndex >= 0) {
-								updatedMessages[existingMessageIndex] =
-									progressMessage;
-							} else {
-								updatedMessages.push(progressMessage);
-							}
-						}
-					} else if (subnet.status === "done" && subnet.data) {
-						const result = parseAgentResponse(subnet.data);
-						const currentHash = createContentHash(result);
-
-						const previousHash = preFeedbackContent.get(index);
-						const hadFeedback = feedbackGivenForSubnet.has(index);
-						const wasProcessingAfterFeedback =
-							postFeedbackProcessing.get(index) || false;
-
-						if (hadFeedback && wasProcessingAfterFeedback) {
-							const processingIndex = updatedMessages.findIndex(
-								(msg) =>
-									msg.type === "workflow_subnet" &&
-									msg.subnetIndex === index &&
-									msg.subnetStatus === "in_progress" &&
-									msg.isRegenerated
-							);
-
-							const regeneratedMessage: ChatMsg = {
-								id: `subnet_${index}_regenerated_${Date.now()}`,
-								type: "workflow_subnet",
-								content:
-									result.content || "Processing completed",
-								timestamp: new Date(),
-								subnetStatus: "done",
-								toolName: subnet.toolName,
-								subnetIndex: index,
-								imageData: result.imageData,
-								isImage: result.isImage,
-								contentType: result.contentType,
-								sourceId: `${sourceId}_regenerated`,
-								isRegenerated: true,
-								contentHash: currentHash,
-							};
-
-							if (processingIndex >= 0) {
-								updatedMessages[processingIndex] =
-									regeneratedMessage;
-							} else {
-								updatedMessages.push(regeneratedMessage);
-							}
-
-							setFeedbackGivenForSubnet((prev) => {
-								const newSet = new Set(prev);
-								newSet.delete(index);
-								return newSet;
-							});
-							setPostFeedbackProcessing((prev) => {
-								const newMap = new Map(prev);
-								newMap.delete(index);
-								return newMap;
-							});
-						} else if (!hadFeedback) {
-							const doneMessage: ChatMsg = {
-								id: `subnet_${index}_${Date.now()}`,
-								type: "workflow_subnet",
-								content:
-									result.content || "Processing completed",
-								timestamp: new Date(),
-								subnetStatus: "done",
-								toolName: subnet.toolName,
-								subnetIndex: index,
-								imageData: result.imageData,
-								isImage: result.isImage,
-								contentType: result.contentType,
-								sourceId: sourceId,
-								contentHash: currentHash,
-							};
-
-							if (existingMessageIndex >= 0) {
-								updatedMessages[existingMessageIndex] =
-									doneMessage;
-							} else {
-								updatedMessages.push(doneMessage);
-							}
-						} else {
-							setFeedbackGivenForSubnet((prev) => {
-								const newSet = new Set(prev);
-								newSet.delete(index);
-								return newSet;
-							});
-							setPostFeedbackProcessing((prev) => {
-								const newMap = new Map(prev);
-								newMap.delete(index);
-								return newMap;
-							});
-						}
-					} else if (subnet.status === "waiting_response") {
-						if (subnet.data) {
-							const result = parseAgentResponse(subnet.data);
-							const contentHash = createContentHash(result);
-							setPreFeedbackContent((prev) =>
-								new Map(prev).set(index, contentHash)
-							);
-						}
-
-						if (isShowingQuestion) {
-							console.log(
-								`Removing old content for subnet ${index} before showing new data and question`
-							);
-							updatedMessages = updatedMessages.filter((msg) => {
-								if (
-									msg.type === "workflow_subnet" &&
-									msg.subnetIndex === index
-								)
-									return false;
-								if (
-									(msg.type === "question" ||
-										msg.type === "notification") &&
-									msg.questionData?.itemID === subnet.itemID
-								)
-									return false;
-								return true;
-							});
-						}
-
-						if (subnet.data) {
-							const result = parseAgentResponse(subnet.data);
-							let dataContent = result.content;
-
-							try {
-								const parsedData = JSON.parse(subnet.data);
-								if (
-									parsedData.enhancedPrompt &&
-									parsedData.originalPrompt
-								) {
-									dataContent = "Prompt enhancement detected";
-								} else if (result.content) {
-									dataContent = result.content;
-								}
-							} catch {
-								dataContent =
-									result.content || "Processing data...";
-							}
-
-							const dataMessage: ChatMsg = {
-								id: `subnet_${index}_data_${Date.now()}`,
-								type: "workflow_subnet",
-								content: dataContent || "Processing data...",
-								timestamp: new Date(),
-								subnetStatus: "done",
-								toolName: subnet.toolName,
-								subnetIndex: index,
-								imageData: result.imageData,
-								isImage: result.isImage,
-								contentType: result.contentType,
-								sourceId: `${sourceId}_data`,
-								contentHash: createContentHash(result),
-							};
-
-							if (isShowingQuestion) {
-								updatedMessages.push(dataMessage);
-							} else {
-								const existingDataIndex =
-									updatedMessages.findIndex(
-										(msg) =>
-											msg.type === "workflow_subnet" &&
-											msg.subnetIndex === index &&
-											msg.sourceId?.includes("_data") &&
-											!msg.isRegenerated
-									);
-
-								if (existingDataIndex >= 0) {
-									updatedMessages[existingDataIndex] =
-										dataMessage;
-								} else if (existingMessageIndex >= 0) {
-									updatedMessages[existingMessageIndex] =
-										dataMessage;
-								} else {
-									updatedMessages.push(dataMessage);
-								}
-							}
-						} else {
-							const waitingMessage: ChatMsg = {
-								id: `subnet_${index}_${Date.now()}`,
-								type: "workflow_subnet",
-								content: "Waiting for response...",
-								timestamp: new Date(),
-								subnetStatus: "waiting_response",
-								toolName: subnet.toolName,
-								subnetIndex: index,
-								sourceId: sourceId,
-							};
-
-							if (isShowingQuestion) {
-								updatedMessages.push(waitingMessage);
-							} else if (existingMessageIndex >= 0) {
-								updatedMessages[existingMessageIndex] =
-									waitingMessage;
-							} else {
-								updatedMessages.push(waitingMessage);
-							}
-						}
-
-						// Handle questions
-						if (subnet.question) {
-							const questionText = subnet.question.text;
-							const questionType = subnet.question.type;
-							const questionId = `${questionType}_${
-								subnet.itemID
-							}_${Date.now()}`;
-
-							const existingQuestionIndex = isShowingQuestion
-								? -1
-								: updatedMessages.findIndex(
-										(msg) =>
-											(msg.type === "question" ||
-												msg.type === "notification") &&
-											msg.questionData?.text ===
-												questionText &&
-											msg.questionData?.itemID ===
-												subnet.question.itemID
-								  );
-
-							if (existingQuestionIndex === -1) {
-								if (questionType === "notification") {
-									const notificationMessage: ChatMsg = {
-										id: `notification_${Date.now()}`,
-										type: "notification",
-										content: questionText,
-										timestamp: new Date(),
-										toolName: subnet.toolName,
-										questionData: subnet.question,
-										sourceId: questionId,
-									};
-									updatedMessages.push(notificationMessage);
-									setPendingNotifications((prev) => [
-										...prev,
-										notificationMessage,
-									]);
-								} else {
-									const questionMessage: ChatMsg = {
-										id: `question_${Date.now()}`,
-										type: "question",
-										content: questionText,
-										timestamp: new Date(),
-										toolName: subnet.toolName,
-										questionData: subnet.question,
-										sourceId: questionId,
-										question: questionText,
-										answer: "Waiting for user response",
-									};
-									updatedMessages.push(questionMessage);
-								}
-								lastQuestionRef.current = questionId;
-							}
-						}
-					} else if (subnet.status === "failed") {
-						const failedMessage: ChatMsg = {
-							id: `subnet_${index}_${Date.now()}`,
-							type: "workflow_subnet",
-							content: "Failed to process",
-							timestamp: new Date(),
-							subnetStatus: "failed",
-							toolName: subnet.toolName,
-							subnetIndex: index,
-							sourceId: sourceId,
-						};
-
-						if (existingMessageIndex >= 0) {
-							updatedMessages[existingMessageIndex] =
-								failedMessage;
-						} else {
-							updatedMessages.push(failedMessage);
 						}
 					}
+
+					return false;
+				});
+			};
+
+			// Update chat messages
+			setChatMessages((prevMessages) => {
+				console.log(
+					`🔄 Updating chat messages. Current: ${prevMessages.length}, New: ${newMessages.length}`
+				);
+
+				// Debug: Show current message types
+				const messageTypes = prevMessages.map((msg) => ({
+					type: msg.type,
+					content: msg.content?.slice(0, 30),
+				}));
+				console.log(`📋 Current message types:`, messageTypes);
+
+				// Remove only workflow subnet messages for this workflow to prevent duplicates
+				// Keep user messages, responses, and other non-subnet messages
+				const filteredMessages = prevMessages.filter((msg) => {
+					// Always keep user messages and responses
+					if (msg.type === "user" || msg.type === "response") {
+						console.log(
+							`✅ Keeping ${
+								msg.type
+							} message: "${msg.content?.slice(0, 50)}..."`
+						);
+						return true;
+					}
+
+					// Keep all non-subnet messages (questions, notifications, etc.)
+					if (msg.type !== "workflow_subnet") {
+						console.log(
+							`✅ Keeping ${
+								msg.type
+							} message: "${msg.content?.slice(0, 50)}..."`
+						);
+						return true;
+					}
+
+					// For workflow subnet messages, we need to be more selective
+					// Only remove status update messages, keep actual content responses
+					if (msg.subnetIndex !== undefined) {
+						// Check if this is just a status update or actual content
+						const isStatusUpdate =
+							msg.content === "Processing..." ||
+							msg.content === "Waiting for response..." ||
+							msg.content === "Failed to process" ||
+							msg.subnetStatus === "pending" ||
+							msg.subnetStatus === "in_progress";
+
+						if (isStatusUpdate) {
+							console.log(
+								`🗑️ Removing status update for subnet ${msg.subnetIndex}: "${msg.content}"`
+							);
+							return false;
+						} else {
+							console.log(
+								`✅ Keeping subnet response ${
+									msg.subnetIndex
+								}: "${msg.content?.slice(0, 50)}..."`
+							);
+							return true; // Keep actual content responses
+						}
+					}
+
+					// Keep subnet messages without subnetIndex (global messages)
+					console.log(
+						`✅ Keeping global subnet message: "${msg.content?.slice(
+							0,
+							50
+						)}..."`
+					);
+					return true;
 				});
 
-				return updatedMessages;
+				console.log(
+					`📊 After filtering: ${filteredMessages.length} messages preserved`
+				);
+
+				// Filter out duplicate messages from new messages
+				const uniqueNewMessages = newMessages.filter(
+					(newMsg) => !isDuplicateMessage(newMsg, filteredMessages)
+				);
+
+				console.log(
+					`📝 Adding ${uniqueNewMessages.length} unique new messages`
+				);
+
+				// Add new unique messages
+				const finalMessages = [
+					...filteredMessages,
+					...uniqueNewMessages,
+				];
+
+				// Safety check: if we somehow lost all messages, keep the original ones
+				if (finalMessages.length === 0 && prevMessages.length > 0) {
+					console.warn(
+						`⚠️ All messages were filtered out! Keeping original messages.`
+					);
+					return prevMessages;
+				}
+
+				console.log(`✅ Final message count: ${finalMessages.length}`);
+				return finalMessages;
 			});
+
+			// Update pending notifications
+			const notificationMessages = newMessages.filter(
+				(msg) => msg.type === "notification"
+			);
+			if (notificationMessages.length > 0) {
+				setPendingNotifications((prev) => [
+					...prev,
+					...notificationMessages,
+				]);
+			}
 		},
-		[
-			subnetPreviousStatus,
-			postFeedbackProcessing,
-			feedbackGivenForSubnet,
-			preFeedbackContent,
-		]
+		[processSubnetData, clearWorkflowCache, clearWorkflowTracking]
 	);
 
 	const clearMessages = useCallback(() => {
+		console.log(
+			`🗑️ Clearing all messages. Current count: ${chatMessages.length}`
+		);
 		setChatMessages([]);
 		setPendingNotifications([]);
-		setPreFeedbackContent(new Map());
-		setFeedbackGivenForSubnet(new Set());
-		setSubnetPreviousStatus(new Map());
-		setPostFeedbackProcessing(new Map());
-	}, []);
+
+		// Clear current workflow tracking and cache
+		if (currentWorkflowId.current) {
+			console.log(
+				`🗑️ Clearing workflow tracking and cache for: ${currentWorkflowId.current}`
+			);
+			clearWorkflowTracking(currentWorkflowId.current);
+			clearWorkflowCache(currentWorkflowId.current);
+			currentWorkflowId.current = null;
+		}
+	}, [clearWorkflowTracking, clearWorkflowCache, chatMessages.length]);
 
 	const resetFeedbackState = useCallback(() => {
-		setFeedbackGivenForSubnet(new Set());
-		setPostFeedbackProcessing(new Map());
-		setPreFeedbackContent(new Map());
+		// Feedback state is now handled by the subnet cache system
+		// This function is kept for backward compatibility
 	}, []);
+
+	// Get cached subnets for current workflow
+	const getCurrentWorkflowSubnets = useCallback(() => {
+		if (!currentWorkflowId.current) return new Map();
+		return getCachedSubnets(currentWorkflowId.current);
+	}, [getCachedSubnets]);
+
+	// Set workflow ID (useful when switching between workflows)
+	const setWorkflowId = useCallback(
+		(workflowId: string) => {
+			console.log(
+				`🔄 Setting workflow ID: ${workflowId}, Current: ${currentWorkflowId.current}`
+			);
+
+			// Clear previous workflow tracking and cache
+			if (
+				currentWorkflowId.current &&
+				currentWorkflowId.current !== workflowId
+			) {
+				console.log(
+					`🔄 Clearing previous workflow: ${currentWorkflowId.current}`
+				);
+				clearWorkflowTracking(currentWorkflowId.current);
+				clearWorkflowCache(currentWorkflowId.current);
+			}
+
+			currentWorkflowId.current = workflowId;
+			console.log(`✅ Workflow ID set to: ${workflowId}`);
+		},
+		[clearWorkflowTracking, clearWorkflowCache]
+	);
 
 	return {
 		chatMessages,
 		setChatMessages,
 		pendingNotifications,
 		setPendingNotifications,
-		preFeedbackContent,
-		setPreFeedbackContent,
-		feedbackGivenForSubnet,
-		setFeedbackGivenForSubnet,
-		subnetPreviousStatus,
-		setSubnetPreviousStatus,
-		postFeedbackProcessing,
-		setPostFeedbackProcessing,
 		updateMessagesWithSubnetData,
 		clearMessages,
 		resetFeedbackState,
+		// New methods for subnet caching
+		getCurrentWorkflowSubnets,
+		setWorkflowId,
+		currentWorkflowId: currentWorkflowId.current,
 	};
 };

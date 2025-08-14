@@ -51,11 +51,10 @@ export default function AgentChatPage() {
 		setChatMessages,
 		pendingNotifications,
 		setPendingNotifications,
-		setFeedbackGivenForSubnet,
-		setPostFeedbackProcessing,
 		updateMessagesWithSubnetData,
 		clearMessages,
 		resetFeedbackState,
+		setWorkflowId,
 	} = useChatMessages();
 
 	const {
@@ -94,6 +93,7 @@ export default function AgentChatPage() {
 		setIsInFeedbackMode,
 		resetFeedbackState,
 		lastQuestionRef,
+		setWorkflowId, // Pass the setWorkflowId function
 	});
 
 	// Feedback hook
@@ -112,8 +112,6 @@ export default function AgentChatPage() {
 		setWorkflowStatus,
 		setIsExecuting,
 		setIsInFeedbackMode,
-		setFeedbackGivenForSubnet,
-		setPostFeedbackProcessing,
 	});
 
 	// Extract original payload for existing workflows

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ChatMsg } from "@/types/chat";
 import { apiKeyManager } from "@/utils/api-key-manager";
+import { useSubnetCacheStore } from "@/stores/subnet-cache-store";
 import SkyMainBrowser from "@decloudlabs/skynet/lib/services/SkyMainBrowser";
 import { Web3Context } from "@/types/wallet";
 
@@ -14,12 +15,6 @@ interface UseFeedbackProps {
 	setWorkflowStatus: (status: any) => void;
 	setIsExecuting: (executing: boolean) => void;
 	setIsInFeedbackMode: (inMode: boolean) => void;
-	setFeedbackGivenForSubnet: React.Dispatch<
-		React.SetStateAction<Set<number>>
-	>;
-	setPostFeedbackProcessing: React.Dispatch<
-		React.SetStateAction<Map<number, boolean>>
-	>;
 }
 
 export const useFeedback = ({
@@ -32,10 +27,9 @@ export const useFeedback = ({
 	setWorkflowStatus,
 	setIsExecuting,
 	setIsInFeedbackMode,
-	setFeedbackGivenForSubnet,
-	setPostFeedbackProcessing,
 }: UseFeedbackProps) => {
 	const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
+	const { updateSubnetStatus } = useSubnetCacheStore();
 
 	const submitFeedbackToAPI = async (question: string, answer: string) => {
 		if (!currentWorkflowId || !skyBrowser || !address) {
@@ -89,12 +83,16 @@ export const useFeedback = ({
 					subnet.status === "waiting_response" && subnet.question
 			);
 
-			if (waitingSubnetIndex !== undefined && waitingSubnetIndex >= 0) {
-				setFeedbackGivenForSubnet((prev) =>
-					new Set(prev).add(waitingSubnetIndex)
-				);
-				setPostFeedbackProcessing((prev) =>
-					new Map(prev).set(waitingSubnetIndex, true)
+			if (
+				waitingSubnetIndex !== undefined &&
+				waitingSubnetIndex >= 0 &&
+				currentWorkflowId
+			) {
+				// Update subnet status to in_progress to indicate feedback processing
+				updateSubnetStatus(
+					currentWorkflowId,
+					waitingSubnetIndex,
+					"in_progress"
 				);
 			}
 
@@ -161,12 +159,16 @@ export const useFeedback = ({
 					subnet.status === "waiting_response" && subnet.question
 			);
 
-			if (waitingSubnetIndex !== undefined && waitingSubnetIndex >= 0) {
-				setFeedbackGivenForSubnet((prev) =>
-					new Set(prev).add(waitingSubnetIndex)
-				);
-				setPostFeedbackProcessing((prev) =>
-					new Map(prev).set(waitingSubnetIndex, true)
+			if (
+				waitingSubnetIndex !== undefined &&
+				waitingSubnetIndex >= 0 &&
+				currentWorkflowId
+			) {
+				// Update subnet status to in_progress to indicate feedback processing
+				updateSubnetStatus(
+					currentWorkflowId,
+					waitingSubnetIndex,
+					"in_progress"
 				);
 			}
 
@@ -233,12 +235,16 @@ export const useFeedback = ({
 					subnet.status === "waiting_response" && subnet.question
 			);
 
-			if (waitingSubnetIndex !== undefined && waitingSubnetIndex >= 0) {
-				setFeedbackGivenForSubnet((prev) =>
-					new Set(prev).add(waitingSubnetIndex)
-				);
-				setPostFeedbackProcessing((prev) =>
-					new Map(prev).set(waitingSubnetIndex, true)
+			if (
+				waitingSubnetIndex !== undefined &&
+				waitingSubnetIndex >= 0 &&
+				currentWorkflowId
+			) {
+				// Update subnet status to in_progress to indicate feedback processing
+				updateSubnetStatus(
+					currentWorkflowId,
+					waitingSubnetIndex,
+					"in_progress"
 				);
 			}
 

@@ -3,6 +3,7 @@ import { ChatMsg, WorkflowStatus } from "@/types/chat";
 import { workflowExecutor } from "@/utils/workflow-executor";
 import { useWorkflowExecutionStore } from "@/stores/workflow-execution-store";
 import { useWorkflowExecutor } from "@/hooks/use-workflow-executor";
+import { useSubnetCacheStore } from "@/stores/subnet-cache-store";
 import SkyMainBrowser from "@decloudlabs/skynet/lib/services/SkyMainBrowser";
 import { Web3Context } from "@/types/wallet";
 import { AgentDetail } from "@/types";
@@ -17,6 +18,7 @@ interface UseWorkflowExecutionProps {
 	setIsInFeedbackMode: (inMode: boolean) => void;
 	resetFeedbackState: () => void;
 	lastQuestionRef: React.MutableRefObject<string | null>;
+	setWorkflowId?: (workflowId: string) => void;
 }
 
 export const useWorkflowExecution = ({
@@ -26,6 +28,7 @@ export const useWorkflowExecution = ({
 	setIsInFeedbackMode,
 	resetFeedbackState,
 	lastQuestionRef,
+	setWorkflowId,
 }: UseWorkflowExecutionProps) => {
 	const [isExecuting, setIsExecuting] = useState(false);
 	const [currentWorkflowData, setCurrentWorkflowData] = useState<any>(null);
@@ -38,6 +41,7 @@ export const useWorkflowExecution = ({
 	const { setPollingStatus, stopCurrentExecution } =
 		useWorkflowExecutionStore();
 	const { executeAgentWorkflow } = useWorkflowExecutor();
+	const { clearWorkflowCache } = useSubnetCacheStore();
 
 	const createStatusUpdateHandler = useCallback(
 		(isNewWorkflow = false) => {
@@ -45,9 +49,15 @@ export const useWorkflowExecution = ({
 				console.log("📊 Status update received:", data);
 				setCurrentWorkflowData(data);
 
-				if (data?.requestId && !currentWorkflowId) {
-					setCurrentWorkflowId(data.requestId);
-					workflowExecutor.setCurrentWorkflowId(data.requestId);
+				const workflowId = data?.requestId || data?.workflowId;
+				if (workflowId && !currentWorkflowId) {
+					setCurrentWorkflowId(workflowId);
+					workflowExecutor.setCurrentWorkflowId(workflowId);
+
+					// Notify chat messages hook about workflow change
+					if (setWorkflowId) {
+						setWorkflowId(workflowId);
+					}
 				}
 
 				// Add user prompt if it's a new workflow
@@ -164,6 +174,7 @@ export const useWorkflowExecution = ({
 			stopCurrentExecution,
 			setIsInFeedbackMode,
 			resetFeedbackState,
+			setWorkflowId,
 		]
 	);
 
@@ -188,6 +199,11 @@ export const useWorkflowExecution = ({
 				setCurrentWorkflowId(workflowId);
 
 				workflowExecutor.setCurrentWorkflowId(workflowId);
+
+				// Notify chat messages hook about workflow change
+				if (setWorkflowId) {
+					setWorkflowId(workflowId);
+				}
 
 				const onStatusUpdate = createStatusUpdateHandler(false);
 
@@ -214,7 +230,7 @@ export const useWorkflowExecution = ({
 				setWorkflowStatus("failed");
 			}
 		},
-		[setPollingStatus, createStatusUpdateHandler]
+		[setPollingStatus, createStatusUpdateHandler, setWorkflowId]
 	);
 
 	const executeNewWorkflow = useCallback(
@@ -232,7 +248,7 @@ export const useWorkflowExecution = ({
 				setIsInFeedbackMode(false);
 				resetFeedbackState();
 
-				// Clear previous state
+				// Clear previous state and cache
 				setChatMessages([]);
 				setCurrentWorkflowData(null);
 				lastQuestionRef.current = null;
@@ -260,6 +276,11 @@ export const useWorkflowExecution = ({
 				setCurrentWorkflowId(workflowId);
 				workflowExecutor.setCurrentWorkflowId(workflowId);
 
+				// Notify chat messages hook about workflow change
+				if (setWorkflowId) {
+					setWorkflowId(workflowId);
+				}
+
 				// Update URL with workflow ID
 				const currentUrl = new URL(window.location.href);
 				currentUrl.searchParams.set("workflowId", workflowId);
@@ -284,6 +305,7 @@ export const useWorkflowExecution = ({
 			createStatusUpdateHandler,
 			executeAgentWorkflow,
 			setPrompt,
+			setWorkflowId,
 		]
 	);
 
@@ -364,6 +386,11 @@ export const useWorkflowExecution = ({
 	);
 
 	const clearWorkflow = useCallback(() => {
+		// Clear workflow cache when clearing workflow
+		if (currentWorkflowId) {
+			clearWorkflowCache(currentWorkflowId);
+		}
+
 		setCurrentWorkflowId(null);
 		setCurrentWorkflowData(null);
 		setIsExecuting(false);
@@ -372,7 +399,13 @@ export const useWorkflowExecution = ({
 		setIsInFeedbackMode(false);
 		resetFeedbackState();
 		workflowExecutor.clearCurrentWorkflow();
-	}, [setPollingStatus, setIsInFeedbackMode, resetFeedbackState]);
+	}, [
+		setPollingStatus,
+		setIsInFeedbackMode,
+		resetFeedbackState,
+		currentWorkflowId,
+		clearWorkflowCache,
+	]);
 
 	return {
 		isExecuting,
