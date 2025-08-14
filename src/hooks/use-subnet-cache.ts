@@ -154,21 +154,34 @@ export const useSubnetCache = () => {
 				statusMap.set(index, currentStatus);
 
 				// Generate messages based on status and changes
-				// Always generate messages for new subnets or changed subnets
-				// Also always generate messages for pending subnets with data (they should be visible)
+				// Only generate messages when:
+				// 1. Status has actually changed (not just new/unchanged)
+				// 2. Moving from pending to in_progress (start processing)
+				// 3. Moving from in_progress to done/waiting_response (has meaningful data)
+				// 4. Pending subnets with substantial data (not just status messages)
+				const hasSubstantialData =
+					subnet.data &&
+					subnet.data.length > 50 &&
+					!subnet.data.includes("Queued for processing") &&
+					!subnet.data.includes("Processing with");
+
 				const shouldGenerateMessage =
-					hasChanged ||
-					!prevStatus ||
-					(subnet.status === "pending" && subnet.data);
+					(hasChanged && prevStatus) || // Status changed from a previous state
+					(subnet.status === "in_progress" &&
+						prevStatus === "pending") || // Start processing
+					(subnet.status === "done" && subnet.data) || // Completed with data
+					(subnet.status === "waiting_response" && subnet.data) || // Has data and waiting for response
+					(subnet.status === "pending" && hasSubstantialData) || // Pending with real data
+					(prevStatus === "in_progress" &&
+						subnet.status !== "in_progress"); // Transition away from processing
 
 				if (shouldGenerateMessage) {
 					console.log(
-						`✨ Generating message for subnet ${index} (changed: ${hasChanged}, new: ${!prevStatus}, pending with data: ${
-							subnet.status === "pending" && subnet.data
-						})`
+						`✨ Generating message for subnet ${index} (changed: ${hasChanged}, transition: ${prevStatus} -> ${subnet.status}, hasSubstantialData: ${hasSubstantialData})`
 					);
 
-					const message = createSubnetMessage(
+					// Create messages for data and questions separately when both exist
+					const subnetMessages = createSubnetMessages(
 						workflowId,
 						index,
 						subnet,
@@ -181,94 +194,67 @@ export const useSubnetCache = () => {
 						}
 					);
 
-					if (message) {
-						// Check if this message has already been generated
-						// For pending subnets with data, use a more specific key to avoid incorrect deduplication
-						let messageKey;
-						if (subnet.status === "pending" && subnet.data) {
-							messageKey = `${workflowId}_${index}_pending_with_data_${JSON.stringify(
+					subnetMessages.forEach((message) => {
+						if (message) {
+							// Check if this message has already been generated
+							// Use message type and content for better deduplication
+							let messageKey;
+							if (message.type === "question") {
+								messageKey = `${workflowId}_${index}_question_${message.content?.slice(
+									0,
+									50
+								)}`;
+							} else if (
+								subnet.status === "pending" &&
 								subnet.data
-							).slice(0, 100)}`;
-						} else {
-							messageKey = `${workflowId}_${index}_${
-								subnet.status
-							}_${
-								subnet.data
-									? JSON.stringify(subnet.data).slice(0, 100)
-									: "no-data"
-							}`;
-						}
+							) {
+								messageKey = `${workflowId}_${index}_pending_with_data_${JSON.stringify(
+									subnet.data
+								).slice(0, 100)}`;
+							} else {
+								messageKey = `${workflowId}_${index}_${
+									message.type
+								}_${subnet.status}_${
+									subnet.data
+										? JSON.stringify(subnet.data).slice(
+												0,
+												100
+										  )
+										: "no-data"
+								}`;
+							}
 
-						console.log(
-							`🔑 Message key for subnet ${index}:`,
-							messageKey
-						);
-						console.log(
-							`🔍 Checking if message exists:`,
-							messageIds.has(messageKey)
-						);
-
-						if (!messageIds.has(messageKey)) {
-							messages.push(message);
-							messageIds.add(messageKey);
 							console.log(
-								`✅ Message generated for subnet ${index}:`,
-								message.type,
-								`Content: "${message.content?.slice(0, 50)}..."`
+								`🔑 Message key for subnet ${index}:`,
+								messageKey
 							);
-						} else {
-							console.log(
-								`⏭️ Skipping duplicate message for subnet ${index}`
-							);
-						}
-					} else {
-						console.log(
-							`⚠️ No message generated for subnet ${index} - status: ${
-								subnet.status
-							}, hasData: ${!!subnet.data}`
-						);
-					}
 
-					// Handle questions with deduplication
-					// Show questions for pending subnets with data, or when there are status transitions
-					const shouldShowQuestion =
-						subnet.question &&
-						(hasChanged ||
-							isShowingQuestion ||
-							(subnet.status === "pending" && subnet.data));
-
-					if (shouldShowQuestion) {
-						const questionKey = `question_${workflowId}_${index}_${subnet.question.text}`;
-
-						if (!messageIds.has(questionKey)) {
-							const questionMessage = createQuestionMessage(
-								subnet,
-								index
-							);
-							if (questionMessage) {
-								messages.push(questionMessage);
-								lastQuestionRef.current = questionMessage.id;
-								messageIds.add(questionKey);
+							if (!messageIds.has(messageKey)) {
+								messages.push(message);
+								messageIds.add(messageKey);
 								console.log(
-									`❓ Question message generated for subnet ${index}:`,
-									`"${questionMessage.content?.slice(
+									`✅ Message generated for subnet ${index}:`,
+									message.type,
+									`Content: "${message.content?.slice(
 										0,
 										50
 									)}..."`
 								);
+							} else {
+								console.log(
+									`⏭️ Skipping duplicate message for subnet ${index}`
+								);
 							}
 						} else {
 							console.log(
-								`⏭️ Skipping duplicate question for subnet ${index}`
+								`⚠️ No message generated for subnet ${index} - status: ${
+									subnet.status
+								}, hasData: ${!!subnet.data}`
 							);
 						}
-					} else if (subnet.question) {
-						console.log(
-							`⚠️ Question exists for subnet ${index} but not generating: hasChanged=${hasChanged}, isShowingQuestion=${isShowingQuestion}, pendingWithData=${
-								subnet.status === "pending" && subnet.data
-							}`
-						);
-					}
+					});
+
+					// Questions are now handled within createSubnetMessages function
 
 					// Handle notifications with deduplication
 					// Show notifications for pending subnets with data, or when there are status transitions
@@ -334,7 +320,7 @@ export const useSubnetCache = () => {
 	);
 
 	// Create subnet message based on status
-	const createSubnetMessage = useCallback(
+	const createSubnetMessages = useCallback(
 		(
 			workflowId: string,
 			index: number,
@@ -345,7 +331,7 @@ export const useSubnetCache = () => {
 				hasFeedback: boolean;
 				isProcessingAfterFeedback: boolean;
 			}
-		): ChatMsg | null => {
+		): ChatMsg[] => {
 			const {
 				isRegenerating,
 				isShowingQuestion,
@@ -353,13 +339,52 @@ export const useSubnetCache = () => {
 				isProcessingAfterFeedback,
 			} = options;
 			const sourceId = `subnet_${index}_${subnet.status}`;
+			const messages: ChatMsg[] = [];
+
+			// Helper function to extract question data from subnet
+			const extractQuestionData = (subnetData: string) => {
+				try {
+					const parsedData = JSON.parse(subnetData);
+					if (
+						parsedData.question ||
+						(parsedData.data && parsedData.data.question)
+					) {
+						const questionText =
+							parsedData.question || parsedData.data.question;
+
+						if (
+							typeof questionText === "object" &&
+							questionText.text
+						) {
+							return questionText;
+						} else if (typeof questionText === "string") {
+							return {
+								type: "feedback",
+								text: questionText,
+								itemID: Date.now(),
+								expiresAt: new Date(
+									Date.now() + 30 * 60 * 1000
+								).toISOString(),
+							};
+						}
+					}
+				} catch (e) {
+					// Ignore parsing errors
+				}
+				return null;
+			};
 
 			switch (subnet.status) {
 				case "pending":
-					// Show pending subnets with data if available, otherwise show status message
-					if (subnet.data) {
+					// Only show pending subnets if they have substantial data
+					if (
+						subnet.data &&
+						subnet.data.length > 50 &&
+						!subnet.data.includes("Queued for processing") &&
+						!subnet.data.includes("Processing with")
+					) {
 						console.log(
-							`🔍 Creating pending message with data for subnet ${index}:`,
+							`🔍 Creating pending message with substantial data for subnet ${index}:`,
 							{
 								rawData: subnet.data,
 								dataType: typeof subnet.data,
@@ -368,17 +393,7 @@ export const useSubnetCache = () => {
 						);
 
 						const result = parseAgentResponse(subnet.data);
-						console.log(
-							`🔍 Parsed result for pending subnet ${index}:`,
-							{
-								content: result.content?.slice(0, 100),
-								hasImageData: !!result.imageData,
-								contentType: result.contentType,
-							}
-						);
-
-						let content =
-							result.content || "Queued for processing...";
+						let content = result.content || "";
 
 						// Handle special data formats and nested structures
 						try {
@@ -387,10 +402,6 @@ export const useSubnetCache = () => {
 							// Check for nested data structure (like in subnet 3)
 							if (parsedData.data && parsedData.data.message) {
 								content = parsedData.data.message;
-								console.log(
-									`🔍 Found nested data.message for pending subnet ${index}:`,
-									content?.slice(0, 100)
-								);
 							} else if (
 								parsedData.enhancedPrompt &&
 								parsedData.originalPrompt
@@ -398,55 +409,57 @@ export const useSubnetCache = () => {
 								content = "Prompt enhancement detected";
 							} else if (parsedData.message) {
 								content = parsedData.message;
-								console.log(
-									`🔍 Found data.message for pending subnet ${index}:`,
-									content?.slice(0, 100)
-								);
 							}
 						} catch (e) {
 							console.log(
 								`⚠️ Failed to parse JSON for pending subnet ${index}:`,
 								e
 							);
-							// Use default content from parseAgentResponse
 						}
 
-						console.log(
-							`🔍 Final content for pending subnet ${index}:`,
-							content?.slice(0, 100)
-						);
+						// Only add message if we have meaningful content
+						if (content && content.length > 10) {
+							const dataMessage = {
+								id: `subnet_${index}_data_${Date.now()}`,
+								type: "workflow_subnet" as const,
+								content,
+								timestamp: new Date(),
+								subnetStatus: "done" as const, // Show as completed since it has data
+								toolName: subnet.toolName,
+								subnetIndex: index,
+								imageData: result.imageData,
+								isImage: result.isImage,
+								contentType: result.contentType,
+								sourceId: `${sourceId}_data`,
+								contentHash: createContentHash(result),
+							};
+							messages.push(dataMessage);
 
-						return {
-							id: `subnet_${index}_pending_with_data_${Date.now()}`,
-							type: "workflow_subnet",
-							content,
-							timestamp: new Date(),
-							subnetStatus: "pending",
-							toolName: subnet.toolName,
-							subnetIndex: index,
-							imageData: result.imageData,
-							isImage: result.isImage,
-							contentType: result.contentType,
-							sourceId: `${sourceId}_pending_with_data`,
-							contentHash: createContentHash(result),
-						};
-					} else {
-						// No data available, show status message
-						return {
-							id: `subnet_${index}_pending_${Date.now()}`,
-							type: "workflow_subnet",
-							content: "Queued for processing...",
-							timestamp: new Date(),
-							subnetStatus: "pending",
-							toolName: subnet.toolName,
-							subnetIndex: index,
-							sourceId: `${sourceId}_pending`,
-						};
+							// Check for questions in the data
+							const questionData = extractQuestionData(
+								subnet.data
+							);
+							if (questionData) {
+								const questionMessage = {
+									id: `subnet_${index}_question_${Date.now()}`,
+									type: "question" as const,
+									content: questionData.text,
+									timestamp: new Date(),
+									subnetStatus: "waiting_response" as const,
+									toolName: subnet.toolName,
+									subnetIndex: index,
+									questionData: questionData,
+									sourceId: `${sourceId}_question`,
+								};
+								messages.push(questionMessage);
+							}
+						}
 					}
+					break;
 
 				case "in_progress":
 					if (isProcessingAfterFeedback) {
-						return {
+						messages.push({
 							id: `subnet_${index}_processing_after_feedback_${Date.now()}`,
 							type: "workflow_subnet",
 							content: "Processing with your feedback...",
@@ -456,9 +469,9 @@ export const useSubnetCache = () => {
 							subnetIndex: index,
 							sourceId: `${sourceId}_processing_after_feedback`,
 							isRegenerated: true,
-						};
+						});
 					} else {
-						return {
+						messages.push({
 							id: `subnet_${index}_processing_${Date.now()}`,
 							type: "workflow_subnet",
 							content: `Processing with ${
@@ -469,84 +482,200 @@ export const useSubnetCache = () => {
 							toolName: subnet.toolName,
 							subnetIndex: index,
 							sourceId: sourceId,
-						};
+						});
 					}
+					break;
 
 				case "done":
 					if (subnet.data) {
 						const result = parseAgentResponse(subnet.data);
 						const contentHash = createContentHash(result);
 
-						let content = result.content || "Processing completed";
+						let content = result.content || "";
+						let hasQuestion = false;
+						let questionContent = "";
 
-						// Handle special data formats
+						// Handle special data formats and extract questions
 						try {
 							const parsedData = JSON.parse(subnet.data);
-							if (
+
+							// Check for nested data structure
+							if (parsedData.data && parsedData.data.message) {
+								content = parsedData.data.message;
+							} else if (
 								parsedData.enhancedPrompt &&
 								parsedData.originalPrompt
 							) {
 								content = "Prompt enhancement detected";
+							} else if (parsedData.message) {
+								content = parsedData.message;
+							}
+
+							// Check for questions in the data
+							if (
+								parsedData.question ||
+								(parsedData.data && parsedData.data.question)
+							) {
+								hasQuestion = true;
+								questionContent =
+									parsedData.question ||
+									parsedData.data.question;
 							}
 						} catch {
 							// Use default content
 						}
 
-						return {
-							id: `subnet_${index}_${
-								isRegenerating ? "regenerated" : "done"
-							}_${Date.now()}`,
-							type: "workflow_subnet",
-							content,
-							timestamp: new Date(),
-							subnetStatus: "done",
-							toolName: subnet.toolName,
-							subnetIndex: index,
-							imageData: result.imageData,
-							isImage: result.isImage,
-							contentType: result.contentType,
-							sourceId: isRegenerating
-								? `${sourceId}_regenerated`
-								: sourceId,
-							isRegenerated: isRegenerating,
-							contentHash,
-						};
+						// If we have both data and question, prioritize showing data first
+						if (content || result.imageData) {
+							const dataMessage = {
+								id: `subnet_${index}_data_${Date.now()}`,
+								type: "workflow_subnet" as const,
+								content: content || "Data received",
+								timestamp: new Date(),
+								subnetStatus: "done" as const,
+								toolName: subnet.toolName,
+								subnetIndex: index,
+								imageData: result.imageData,
+								isImage: result.isImage,
+								contentType: result.contentType,
+								sourceId: `${sourceId}_data`,
+								isRegenerated: isRegenerating,
+								contentHash,
+							};
+							messages.push(dataMessage);
+
+							// Check for questions in the data and add them as separate messages
+							const questionData = extractQuestionData(
+								subnet.data
+							);
+							if (questionData) {
+								const questionMessage = {
+									id: `subnet_${index}_question_${Date.now()}`,
+									type: "question" as const,
+									content: questionData.text,
+									timestamp: new Date(),
+									subnetStatus: "waiting_response" as const,
+									toolName: subnet.toolName,
+									subnetIndex: index,
+									questionData: questionData,
+									sourceId: `${sourceId}_question`,
+								};
+								messages.push(questionMessage);
+							}
+						}
 					}
-					return null;
+					break;
 
 				case "waiting_response":
 					if (subnet.data) {
 						const result = parseAgentResponse(subnet.data);
-						let content = result.content || "Processing data...";
+						let content = result.content || "";
+						let hasQuestion = false;
+						let questionData = null;
 
+						// Handle special data formats and extract questions
 						try {
 							const parsedData = JSON.parse(subnet.data);
-							if (
+
+							// Check for nested data structure
+							if (parsedData.data && parsedData.data.message) {
+								content = parsedData.data.message;
+							} else if (
 								parsedData.enhancedPrompt &&
 								parsedData.originalPrompt
 							) {
 								content = "Prompt enhancement detected";
+							} else if (parsedData.message) {
+								content = parsedData.message;
+							}
+
+							// Check for questions in the data
+							if (
+								parsedData.question ||
+								(parsedData.data && parsedData.data.question)
+							) {
+								hasQuestion = true;
+								const questionText =
+									parsedData.question ||
+									parsedData.data.question;
+
+								// Extract question data if it's structured
+								if (
+									typeof questionText === "object" &&
+									questionText.text
+								) {
+									questionData = questionText;
+								} else if (typeof questionText === "string") {
+									questionData = {
+										type: "feedback",
+										text: questionText,
+										itemID: Date.now(),
+										expiresAt: new Date(
+											Date.now() + 30 * 60 * 1000
+										).toISOString(), // 30 minutes
+									};
+								}
 							}
 						} catch {
 							// Use default content
 						}
 
-						return {
-							id: `subnet_${index}_data_${Date.now()}`,
-							type: "workflow_subnet",
-							content,
-							timestamp: new Date(),
-							subnetStatus: "done",
-							toolName: subnet.toolName,
-							subnetIndex: index,
-							imageData: result.imageData,
-							isImage: result.isImage,
-							contentType: result.contentType,
-							sourceId: `${sourceId}_data`,
-							contentHash: createContentHash(result),
-						};
+						// For waiting_response, prioritize questions over data
+						// If there's a question, show the question first, then data
+						if (hasQuestion && questionData) {
+							// Show the question message
+							const questionMessage = {
+								id: `subnet_${index}_question_${Date.now()}`,
+								type: "question" as const,
+								content: questionData.text,
+								timestamp: new Date(),
+								subnetStatus: "waiting_response" as const,
+								toolName: subnet.toolName,
+								subnetIndex: index,
+								questionData: questionData,
+								sourceId: `${sourceId}_question`,
+							};
+							messages.push(questionMessage);
+
+							// Also show data if available (but after the question)
+							if (content || result.imageData) {
+								const dataMessage = {
+									id: `subnet_${index}_data_${Date.now()}`,
+									type: "workflow_subnet" as const,
+									content: content || "Data received",
+									timestamp: new Date(),
+									subnetStatus: "done" as const,
+									toolName: subnet.toolName,
+									subnetIndex: index,
+									imageData: result.imageData,
+									isImage: result.isImage,
+									contentType: result.contentType,
+									sourceId: `${sourceId}_data`,
+									contentHash: createContentHash(result),
+								};
+								messages.push(dataMessage);
+							}
+						} else if (content || result.imageData) {
+							// No question, just show data as completed
+							const dataMessage = {
+								id: `subnet_${index}_data_${Date.now()}`,
+								type: "workflow_subnet" as const,
+								content: content || "Data received",
+								timestamp: new Date(),
+								subnetStatus: "done" as const,
+								toolName: subnet.toolName,
+								subnetIndex: index,
+								imageData: result.imageData,
+								isImage: result.isImage,
+								contentType: result.contentType,
+								sourceId: `${sourceId}_data`,
+								contentHash: createContentHash(result),
+							};
+							messages.push(dataMessage);
+						}
 					} else {
-						return {
+						// No data, just waiting
+						messages.push({
 							id: `subnet_${index}_waiting_${Date.now()}`,
 							type: "workflow_subnet",
 							content: `Waiting for your response...`,
@@ -555,11 +684,12 @@ export const useSubnetCache = () => {
 							toolName: subnet.toolName,
 							subnetIndex: index,
 							sourceId: sourceId,
-						};
+						});
 					}
+					break;
 
 				case "failed":
-					return {
+					messages.push({
 						id: `subnet_${index}_failed_${Date.now()}`,
 						type: "workflow_subnet",
 						content: "Failed to process",
@@ -568,33 +698,16 @@ export const useSubnetCache = () => {
 						toolName: subnet.toolName,
 						subnetIndex: index,
 						sourceId: sourceId,
-					};
+					});
+					break;
 
 				default:
-					return null;
+					break;
 			}
-		},
-		[]
-	);
 
-	// Create question message
-	const createQuestionMessage = useCallback(
-		(subnet: any, index: number): ChatMsg => {
-			return {
-				id: `question_${Date.now()}`,
-				type: "question",
-				content: subnet.question.text,
-				timestamp: new Date(),
-				toolName: subnet.toolName,
-				subnetStatus: subnet.status, // Add subnet status to link question to subnet
-				subnetIndex: index, // Add subnet index to link question to subnet
-				questionData: subnet.question,
-				sourceId: `question_${subnet.itemID}_${Date.now()}`,
-				question: subnet.question.text,
-				answer: "Waiting for user response",
-			};
+			return messages;
 		},
-		[]
+		[parseAgentResponse, createContentHash]
 	);
 
 	// Create notification message

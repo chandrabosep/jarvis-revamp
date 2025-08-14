@@ -162,10 +162,33 @@ export const useChatMessages = () => {
 								return true;
 							}
 
-							// Keep processing messages if they're still relevant (in_progress status)
+							// Check if there's a new message for this subnet that should replace processing messages
+							const hasNewMessageForSubnet = newMessages.some(
+								(newMsg) =>
+									newMsg.type === "workflow_subnet" &&
+									newMsg.subnetIndex === msg.subnetIndex &&
+									(newMsg.subnetStatus === "done" ||
+										newMsg.subnetStatus ===
+											"waiting_response")
+							);
+
+							// Remove processing messages if there's a new completed/waiting message
 							if (
 								msg.subnetStatus === "in_progress" &&
-								msg.content.includes("Processing")
+								msg.content.includes("Processing") &&
+								hasNewMessageForSubnet
+							) {
+								console.log(
+									`🔄 Removing processing message for subnet ${msg.subnetIndex} - replaced by new message`
+								);
+								return false;
+							}
+
+							// Keep processing messages if they're still relevant (no replacement)
+							if (
+								msg.subnetStatus === "in_progress" &&
+								msg.content.includes("Processing") &&
+								!hasNewMessageForSubnet
 							) {
 								console.log(
 									`✅ Keeping processing message for subnet ${msg.subnetIndex}`
