@@ -83,8 +83,8 @@ export const useWorkflowExecution = ({
 					});
 				}
 
-				// Update messages with subnet data
-				updateMessagesWithSubnetData(data, lastQuestionRef);
+				// Note: updateMessagesWithSubnetData is now handled separately in the chat agent page
+				// to prevent mixing messages from different workflows
 
 				// Handle workflow status changes
 				if (data.workflowStatus === "completed") {
@@ -389,6 +389,11 @@ export const useWorkflowExecution = ({
 		// Clear workflow cache when clearing workflow
 		if (currentWorkflowId) {
 			clearWorkflowCache(currentWorkflowId);
+		}
+
+		// Force stop any active polling for the current workflow
+		if (currentWorkflowId) {
+			workflowExecutor.forceStopPollingForWorkflow(currentWorkflowId);
 		}
 
 		setCurrentWorkflowId(null);

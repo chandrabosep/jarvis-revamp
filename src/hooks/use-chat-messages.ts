@@ -17,6 +17,33 @@ export const useChatMessages = () => {
 
 	const currentWorkflowId = useRef<string | null>(null);
 
+	const safeSetChatMessages = useCallback(
+		(messages: ChatMsg[] | ((prev: ChatMsg[]) => ChatMsg[])) => {
+			setChatMessages(messages);
+		},
+		[]
+	);
+
+	const setChatMessagesWithWorkflowCheck = useCallback(
+		(
+			messages: ChatMsg[] | ((prev: ChatMsg[]) => ChatMsg[]),
+			workflowId?: string
+		) => {
+			if (
+				workflowId &&
+				currentWorkflowId.current &&
+				workflowId !== currentWorkflowId.current
+			) {
+				console.warn(
+					`⚠️ Attempting to set messages for different workflow: ${workflowId} vs ${currentWorkflowId.current}`
+				);
+				return;
+			}
+			setChatMessages(messages);
+		},
+		[]
+	);
+
 	const updateMessagesWithSubnetData = useCallback(
 		(data: any, lastQuestionRef: React.MutableRefObject<string | null>) => {
 			const workflowId =
@@ -66,38 +93,15 @@ export const useChatMessages = () => {
 						return false;
 					}
 
+					// For workflow_subnet messages, only consider them duplicates if they have the same content AND status
+					// This allows status updates (like "Processing..." -> "Completed") to show properly
 					if (
 						newMsg.subnetIndex === existingMsg.subnetIndex &&
-						newMsg.toolName === existingMsg.toolName
+						newMsg.toolName === existingMsg.toolName &&
+						newMsg.subnetStatus === existingMsg.subnetStatus &&
+						newMsg.content === existingMsg.content
 					) {
-						const newIsStatusUpdate =
-							newMsg.content === "Processing..." ||
-							newMsg.content === "Waiting for response..." ||
-							newMsg.content === "Failed to process" ||
-							newMsg.subnetStatus === "pending" ||
-							newMsg.subnetStatus === "in_progress";
-
-						const existingIsStatusUpdate =
-							existingMsg.content === "Processing..." ||
-							existingMsg.content === "Waiting for response..." ||
-							existingMsg.content === "Failed to process" ||
-							existingMsg.subnetStatus === "pending" ||
-							existingMsg.subnetStatus === "in_progress";
-
-						if (newIsStatusUpdate && existingIsStatusUpdate) {
-							return true;
-						}
-
-						if (existingIsStatusUpdate && !newIsStatusUpdate) {
-							return false;
-						}
-
-						if (!newIsStatusUpdate && !existingIsStatusUpdate) {
-							return (
-								newMsg.content === existingMsg.content &&
-								newMsg.subnetStatus === existingMsg.subnetStatus
-							);
-						}
+						return true;
 					}
 
 					return false;
@@ -116,6 +120,7 @@ export const useChatMessages = () => {
 				console.log(`📋 Current message types:`, messageTypes);
 
 				const filteredMessages = prevMessages.filter((msg) => {
+					// Always keep user and response messages
 					if (msg.type === "user" || msg.type === "response") {
 						console.log(
 							`✅ Keeping ${
@@ -125,7 +130,11 @@ export const useChatMessages = () => {
 						return true;
 					}
 
-					if (msg.type !== "workflow_subnet") {
+					// Always keep question and notification messages
+					if (
+						msg.type === "question" ||
+						msg.type === "notification"
+					) {
 						console.log(
 							`✅ Keeping ${
 								msg.type
@@ -134,31 +143,107 @@ export const useChatMessages = () => {
 						return true;
 					}
 
-					if (msg.subnetIndex !== undefined) {
-						const isStatusUpdate =
-							msg.content === "Processing..." ||
-							msg.content === "Waiting for response..." ||
-							msg.content === "Failed to process" ||
-							msg.subnetStatus === "pending" ||
-							msg.subnetStatus === "in_progress";
+					// For workflow_subnet messages, be more selective about what to remove
+					if (msg.type === "workflow_subnet") {
+						// Keep messages that are not just status placeholders
+						if (msg.subnetIndex !== undefined) {
+							// Keep messages with actual content (not just status updates)
+							if (
+								msg.content &&
+								!msg.content.includes("Processing") &&
+								!msg.content.includes("Waiting for") &&
+								!msg.content.includes("Queued for")
+							) {
+								console.log(
+									`✅ Keeping subnet response ${
+										msg.subnetIndex
+									}: "${msg.content?.slice(0, 50)}..."`
+								);
+								return true;
+							}
 
-						if (isStatusUpdate) {
+							// Keep processing messages if they're still relevant (in_progress status)
+							if (
+								msg.subnetStatus === "in_progress" &&
+								msg.content.includes("Processing")
+							) {
+								console.log(
+									`✅ Keeping processing message for subnet ${msg.subnetIndex}`
+								);
+								return true;
+							}
+
+							// Keep waiting response messages if they're still relevant
+							if (
+								msg.subnetStatus === "waiting_response" &&
+								msg.content.includes("Waiting for")
+							) {
+								console.log(
+									`✅ Keeping waiting response message for subnet ${msg.subnetIndex}`
+								);
+								return true;
+							}
+
+							// Keep pending messages if they're still relevant
+							if (
+								msg.subnetStatus === "pending" &&
+								msg.content.includes("Queued for")
+							) {
+								console.log(
+									`✅ Keeping pending message for subnet ${msg.subnetIndex}`
+								);
+								return true;
+							}
+
+							// Keep pending messages with actual data content
+							if (
+								msg.subnetStatus === "pending" &&
+								msg.content &&
+								!msg.content.includes("Queued for")
+							) {
+								console.log(
+									`✅ Keeping pending message with data for subnet ${
+										msg.subnetIndex
+									}: "${msg.content?.slice(0, 50)}..."`
+								);
+								return true;
+							}
+
+							// Debug: Log what's happening with pending messages
+							if (msg.subnetStatus === "pending") {
+								console.log(
+									`🔍 Pending message debug for subnet ${msg.subnetIndex}:`,
+									{
+										content: msg.content?.slice(0, 100),
+										includesQueued:
+											msg.content?.includes("Queued for"),
+										willKeep:
+											msg.content &&
+											!msg.content.includes("Queued for"),
+									}
+								);
+							}
+
+							// Remove old status update messages that are no longer relevant
 							console.log(
-								`🗑️ Removing status update for subnet ${msg.subnetIndex}: "${msg.content}"`
+								`🗑️ Removing old status update for subnet ${msg.subnetIndex}: "${msg.content}"`
 							);
 							return false;
-						} else {
-							console.log(
-								`✅ Keeping subnet response ${
-									msg.subnetIndex
-								}: "${msg.content?.slice(0, 50)}..."`
-							);
-							return true;
 						}
+
+						// Keep global subnet messages
+						console.log(
+							`✅ Keeping global subnet message: "${msg.content?.slice(
+								0,
+								50
+							)}..."`
+						);
+						return true;
 					}
 
+					// Keep all other message types
 					console.log(
-						`✅ Keeping global subnet message: "${msg.content?.slice(
+						`✅ Keeping ${msg.type} message: "${msg.content?.slice(
 							0,
 							50
 						)}..."`
@@ -191,6 +276,15 @@ export const useChatMessages = () => {
 				}
 
 				console.log(`✅ Final message count: ${finalMessages.length}`);
+				console.log(
+					`🔍 Final message types:`,
+					finalMessages.map((msg) => ({
+						type: msg.type,
+						content: msg.content?.slice(0, 50),
+						subnetStatus: msg.subnetStatus,
+						toolName: msg.toolName,
+					}))
+				);
 				return finalMessages;
 			});
 
@@ -229,7 +323,11 @@ export const useChatMessages = () => {
 		}
 	}, [clearWorkflowTracking, clearWorkflowCache, chatMessages.length]);
 
-	const resetFeedbackState = useCallback(() => {}, []);
+	const resetFeedbackState = useCallback(() => {
+		console.log("🔄 Resetting feedback state");
+		// Clear any pending feedback-related state
+		setPendingNotifications([]);
+	}, []);
 
 	const getCurrentWorkflowSubnets = useCallback(() => {
 		if (!currentWorkflowId.current) return new Map();
@@ -262,6 +360,8 @@ export const useChatMessages = () => {
 	return {
 		chatMessages,
 		setChatMessages,
+		safeSetChatMessages,
+		setChatMessagesWithWorkflowCheck,
 		pendingNotifications,
 		setPendingNotifications,
 		updateMessagesWithSubnetData,

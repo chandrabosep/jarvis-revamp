@@ -102,6 +102,25 @@ export const useSubnetCache = () => {
 					questionText: subnet.question?.text?.slice(0, 50),
 				});
 
+				// Special logging for pending subnets with data
+				if (subnet.status === "pending" && subnet.data) {
+					console.log(
+						`🔄 Pending subnet ${index} has data - will generate message`
+					);
+					console.log(`🔍 Pending subnet ${index} data structure:`, {
+						dataType: typeof subnet.data,
+						dataLength: subnet.data?.length || 0,
+						dataPreview: subnet.data?.slice(0, 200) || "no-data",
+						parsedData: (() => {
+							try {
+								return JSON.parse(subnet.data);
+							} catch (e) {
+								return "Failed to parse JSON";
+							}
+						})(),
+					});
+				}
+
 				// Check if subnet has changed
 				const hasChanged = hasSubnetChanged(workflowId, index, subnet);
 
@@ -135,9 +154,18 @@ export const useSubnetCache = () => {
 				statusMap.set(index, currentStatus);
 
 				// Generate messages based on status and changes
-				if (hasChanged || !prevStatus) {
+				// Always generate messages for new subnets or changed subnets
+				// Also always generate messages for pending subnets with data (they should be visible)
+				const shouldGenerateMessage =
+					hasChanged ||
+					!prevStatus ||
+					(subnet.status === "pending" && subnet.data);
+
+				if (shouldGenerateMessage) {
 					console.log(
-						`✨ Generating message for subnet ${index} (changed: ${hasChanged}, new: ${!prevStatus})`
+						`✨ Generating message for subnet ${index} (changed: ${hasChanged}, new: ${!prevStatus}, pending with data: ${
+							subnet.status === "pending" && subnet.data
+						})`
 					);
 
 					const message = createSubnetMessage(
@@ -155,13 +183,30 @@ export const useSubnetCache = () => {
 
 					if (message) {
 						// Check if this message has already been generated
-						const messageKey = `${workflowId}_${index}_${
-							subnet.status
-						}_${
-							subnet.data
-								? JSON.stringify(subnet.data).slice(0, 100)
-								: "no-data"
-						}`;
+						// For pending subnets with data, use a more specific key to avoid incorrect deduplication
+						let messageKey;
+						if (subnet.status === "pending" && subnet.data) {
+							messageKey = `${workflowId}_${index}_pending_with_data_${JSON.stringify(
+								subnet.data
+							).slice(0, 100)}`;
+						} else {
+							messageKey = `${workflowId}_${index}_${
+								subnet.status
+							}_${
+								subnet.data
+									? JSON.stringify(subnet.data).slice(0, 100)
+									: "no-data"
+							}`;
+						}
+
+						console.log(
+							`🔑 Message key for subnet ${index}:`,
+							messageKey
+						);
+						console.log(
+							`🔍 Checking if message exists:`,
+							messageIds.has(messageKey)
+						);
 
 						if (!messageIds.has(messageKey)) {
 							messages.push(message);
@@ -185,7 +230,14 @@ export const useSubnetCache = () => {
 					}
 
 					// Handle questions with deduplication
-					if (subnet.question && (hasChanged || isShowingQuestion)) {
+					// Show questions for pending subnets with data, or when there are status transitions
+					const shouldShowQuestion =
+						subnet.question &&
+						(hasChanged ||
+							isShowingQuestion ||
+							(subnet.status === "pending" && subnet.data));
+
+					if (shouldShowQuestion) {
 						const questionKey = `question_${workflowId}_${index}_${subnet.question.text}`;
 
 						if (!messageIds.has(questionKey)) {
@@ -212,15 +264,21 @@ export const useSubnetCache = () => {
 						}
 					} else if (subnet.question) {
 						console.log(
-							`⚠️ Question exists for subnet ${index} but not generating: hasChanged=${hasChanged}, isShowingQuestion=${isShowingQuestion}`
+							`⚠️ Question exists for subnet ${index} but not generating: hasChanged=${hasChanged}, isShowingQuestion=${isShowingQuestion}, pendingWithData=${
+								subnet.status === "pending" && subnet.data
+							}`
 						);
 					}
 
 					// Handle notifications with deduplication
-					if (
+					// Show notifications for pending subnets with data, or when there are status transitions
+					const shouldShowNotification =
 						subnet.question?.type === "notification" &&
-						(hasChanged || isShowingQuestion)
-					) {
+						(hasChanged ||
+							isShowingQuestion ||
+							(subnet.status === "pending" && subnet.data));
+
+					if (shouldShowNotification) {
 						const notificationKey = `notification_${workflowId}_${index}_${subnet.question.text}`;
 
 						if (!messageIds.has(notificationKey)) {
@@ -261,6 +319,15 @@ export const useSubnetCache = () => {
 			console.log(
 				`🔍 Message deduplication: ${messageIds.size} unique message keys tracked`
 			);
+			console.log(
+				`🔍 Final messages:`,
+				messages.map((msg) => ({
+					type: msg.type,
+					content: msg.content?.slice(0, 50),
+					subnetStatus: msg.subnetStatus,
+					toolName: msg.toolName,
+				}))
+			);
 			return messages;
 		},
 		[cacheSubnetData, hasSubnetChanged, getWorkflowMaps]
@@ -289,14 +356,100 @@ export const useSubnetCache = () => {
 
 			switch (subnet.status) {
 				case "pending":
-					return null; // Don't show pending subnets
+					// Show pending subnets with data if available, otherwise show status message
+					if (subnet.data) {
+						console.log(
+							`🔍 Creating pending message with data for subnet ${index}:`,
+							{
+								rawData: subnet.data,
+								dataType: typeof subnet.data,
+								dataLength: subnet.data.length,
+							}
+						);
+
+						const result = parseAgentResponse(subnet.data);
+						console.log(
+							`🔍 Parsed result for pending subnet ${index}:`,
+							{
+								content: result.content?.slice(0, 100),
+								hasImageData: !!result.imageData,
+								contentType: result.contentType,
+							}
+						);
+
+						let content =
+							result.content || "Queued for processing...";
+
+						// Handle special data formats and nested structures
+						try {
+							const parsedData = JSON.parse(subnet.data);
+
+							// Check for nested data structure (like in subnet 3)
+							if (parsedData.data && parsedData.data.message) {
+								content = parsedData.data.message;
+								console.log(
+									`🔍 Found nested data.message for pending subnet ${index}:`,
+									content?.slice(0, 100)
+								);
+							} else if (
+								parsedData.enhancedPrompt &&
+								parsedData.originalPrompt
+							) {
+								content = "Prompt enhancement detected";
+							} else if (parsedData.message) {
+								content = parsedData.message;
+								console.log(
+									`🔍 Found data.message for pending subnet ${index}:`,
+									content?.slice(0, 100)
+								);
+							}
+						} catch (e) {
+							console.log(
+								`⚠️ Failed to parse JSON for pending subnet ${index}:`,
+								e
+							);
+							// Use default content from parseAgentResponse
+						}
+
+						console.log(
+							`🔍 Final content for pending subnet ${index}:`,
+							content?.slice(0, 100)
+						);
+
+						return {
+							id: `subnet_${index}_pending_with_data_${Date.now()}`,
+							type: "workflow_subnet",
+							content,
+							timestamp: new Date(),
+							subnetStatus: "pending",
+							toolName: subnet.toolName,
+							subnetIndex: index,
+							imageData: result.imageData,
+							isImage: result.isImage,
+							contentType: result.contentType,
+							sourceId: `${sourceId}_pending_with_data`,
+							contentHash: createContentHash(result),
+						};
+					} else {
+						// No data available, show status message
+						return {
+							id: `subnet_${index}_pending_${Date.now()}`,
+							type: "workflow_subnet",
+							content: "Queued for processing...",
+							timestamp: new Date(),
+							subnetStatus: "pending",
+							toolName: subnet.toolName,
+							subnetIndex: index,
+							sourceId: `${sourceId}_pending`,
+						};
+					}
 
 				case "in_progress":
 					if (isProcessingAfterFeedback) {
 						return {
 							id: `subnet_${index}_processing_after_feedback_${Date.now()}`,
 							type: "workflow_subnet",
-							content: "Processing...",
+							content: "Processing with your feedback...",
 							timestamp: new Date(),
 							subnetStatus: "in_progress",
 							toolName: subnet.toolName,
@@ -306,9 +459,11 @@ export const useSubnetCache = () => {
 						};
 					} else {
 						return {
-							id: `subnet_${index}_${Date.now()}`,
+							id: `subnet_${index}_processing_${Date.now()}`,
 							type: "workflow_subnet",
-							content: "Processing...",
+							content: `Processing with ${
+								subnet.toolName || "agent"
+							}...`,
 							timestamp: new Date(),
 							subnetStatus: "in_progress",
 							toolName: subnet.toolName,
@@ -392,9 +547,9 @@ export const useSubnetCache = () => {
 						};
 					} else {
 						return {
-							id: `subnet_${index}_${Date.now()}`,
+							id: `subnet_${index}_waiting_${Date.now()}`,
 							type: "workflow_subnet",
-							content: "Waiting for response...",
+							content: `Waiting for your response...`,
 							timestamp: new Date(),
 							subnetStatus: "waiting_response",
 							toolName: subnet.toolName,
@@ -405,7 +560,7 @@ export const useSubnetCache = () => {
 
 				case "failed":
 					return {
-						id: `subnet_${index}_${Date.now()}`,
+						id: `subnet_${index}_failed_${Date.now()}`,
 						type: "workflow_subnet",
 						content: "Failed to process",
 						timestamp: new Date(),
@@ -431,6 +586,8 @@ export const useSubnetCache = () => {
 				content: subnet.question.text,
 				timestamp: new Date(),
 				toolName: subnet.toolName,
+				subnetStatus: subnet.status, // Add subnet status to link question to subnet
+				subnetIndex: index, // Add subnet index to link question to subnet
 				questionData: subnet.question,
 				sourceId: `question_${subnet.itemID}_${Date.now()}`,
 				question: subnet.question.text,
@@ -449,6 +606,8 @@ export const useSubnetCache = () => {
 				content: subnet.question.text,
 				timestamp: new Date(),
 				toolName: subnet.toolName,
+				subnetStatus: subnet.status, // Add subnet status to link notification to subnet
+				subnetIndex: index, // Add subnet index to link notification to subnet
 				questionData: subnet.question,
 				sourceId: `notification_${subnet.itemID}_${Date.now()}`,
 			};

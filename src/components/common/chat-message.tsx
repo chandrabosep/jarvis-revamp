@@ -121,21 +121,44 @@ export function ChatMessage({
 
 	// Helper function to check if interactive elements should be hidden
 	const shouldHideInteractiveElements = () => {
-		// Hide interactive elements for all statuses except "waiting_response"
-		// Only show interactive elements when the system is explicitly waiting for user input
-		// This includes: pending, in_progress, done, failed, etc.
+		// Allow interactive elements for:
+		// 1. waiting_response status (explicitly waiting for user input)
+		// 2. pending status with questions (subnets that have data and are waiting for feedback)
 		const shouldHide =
 			message.subnetStatus !== "waiting_response" &&
 			workflowStatus !== "waiting_response";
 
 		// Additional check: if we have a specific subnet status, prioritize it
 		if (message.subnetStatus) {
+			// Allow interactive elements for pending subnets with questions
+			if (message.subnetStatus === "pending" && message.questionData) {
+				return false; // Don't hide interactive elements for pending subnets with questions
+			}
 			return message.subnetStatus !== "waiting_response";
 		}
 
 		// Fall back to overall workflow status
 		return shouldHide;
 	};
+
+	// Helper function to check if message content should be hidden
+	const shouldHideMessageContent = () => {
+		// Never hide the actual content of messages
+		// Only hide interactive elements, not the content itself
+		return false;
+	};
+
+	// Debug: Log message details for troubleshooting
+	console.log(`🔍 ChatMessage debug:`, {
+		messageType: message.type,
+		subnetStatus: message.subnetStatus,
+		workflowStatus,
+		shouldHideInteractiveElements: shouldHideInteractiveElements(),
+		shouldHideMessageContent: shouldHideMessageContent(),
+		showFeedbackButtons,
+		hasQuestionData: !!message.questionData,
+		questionType: message.questionData?.type,
+	});
 
 	// Helper function to check if specific elements should be hidden
 	const shouldHideAuthButton = () =>
@@ -290,7 +313,7 @@ export function ChatMessage({
 							<Bell className="w-4 h-4" />
 							<span>Notification</span>
 						</div>
-						<div className="bg-sidebar/20 border border-border rounded-lg p-3">
+						<div>
 							<div className="text-foreground text-sm leading-relaxed">
 								{isMarkdownContent(message.content) ? (
 									<MDXRenderer content={message.content} />
@@ -395,7 +418,7 @@ export function ChatMessage({
 									: "Question"}
 							</span>
 						</div>
-						<div className="bg-sidebar/20 border border-border rounded-lg p-3">
+						<div>
 							<div className="text-foreground text-sm leading-relaxed overflow-hidden">
 								{(() => {
 									const content =
@@ -752,8 +775,8 @@ export function ChatMessage({
 									)}
 							</div>
 						)}
-						{/* Only show content if not pending */}
-						{message.subnetStatus !== "pending" && (
+						{/* Show content for all subnets, including pending ones with data */}
+						{message.content && (
 							<div className="text-gray-200 text-sm leading-relaxed">
 								{isMarkdownContent(message.content) ? (
 									<MDXRenderer content={message.content} />

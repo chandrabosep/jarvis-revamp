@@ -45,6 +45,9 @@ export default function AgentChatPage() {
 	const [isLoading, setIsLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 	const [isInFeedbackMode, setIsInFeedbackMode] = useState(false);
+	const [isPolling, setIsPolling] = useState(false);
+	const [isShowingCachedMessages, setIsShowingCachedMessages] =
+		useState(false);
 	const { skyBrowser, address } = useWallet();
 	const queryClient = useQueryClient();
 
@@ -54,6 +57,8 @@ export default function AgentChatPage() {
 	const {
 		chatMessages,
 		setChatMessages,
+		safeSetChatMessages,
+		setChatMessagesWithWorkflowCheck,
 		pendingNotifications,
 		setPendingNotifications,
 		updateMessagesWithSubnetData,
@@ -63,21 +68,22 @@ export default function AgentChatPage() {
 	} = useChatMessages();
 
 	useEffect(() => {
-		if (urlWorkflowId && chatMessages.length > 0) {
-			setCachedChatMessages(urlWorkflowId, chatMessages);
-
-			queryClient.setQueryData(["chat", urlWorkflowId], chatMessages);
-		}
-	}, [chatMessages, urlWorkflowId, queryClient]);
-
-	useEffect(() => {
 		if (urlWorkflowId) {
 			const cachedMessages = getCachedChatMessages(urlWorkflowId);
 			if (cachedMessages && cachedMessages.length > 0) {
-				setChatMessages(cachedMessages);
+				console.log(
+					`📋 Loading cached messages for workflow: ${urlWorkflowId}`
+				);
+				setIsShowingCachedMessages(true);
+				setChatMessagesWithWorkflowCheck(cachedMessages, urlWorkflowId);
+			} else {
+				console.log(
+					`📋 No cached messages found for workflow: ${urlWorkflowId}`
+				);
+				setIsShowingCachedMessages(false);
 			}
 		}
-	}, [urlWorkflowId, setChatMessages]);
+	}, [urlWorkflowId]);
 
 	const {
 		messagesEndRef,
@@ -89,6 +95,7 @@ export default function AgentChatPage() {
 	const lastLoadedAgentId = useRef<string | null>(null);
 	const hasAutoSubmittedRef = useRef(false);
 	const lastQuestionRef = useRef<string | null>(null);
+	const previousWorkflowId = useRef<string | null>(null);
 
 	useScrollOnNewMessages(chatMessages.length);
 
@@ -116,6 +123,274 @@ export default function AgentChatPage() {
 		setWorkflowId,
 	});
 
+	useEffect(() => {
+		if (urlWorkflowId && chatMessages.length > 0) {
+			const currentWorkflowIdFromData =
+				currentWorkflowData?.requestId ||
+				currentWorkflowData?.workflowId;
+
+			if (currentWorkflowIdFromData === urlWorkflowId) {
+				console.log(
+					`💾 Caching messages for workflow: ${urlWorkflowId}`
+				);
+				setCachedChatMessages(urlWorkflowId, chatMessages);
+				queryClient.setQueryData(["chat", urlWorkflowId], chatMessages);
+			} else {
+				console.log(
+					`⚠️ Not caching messages - workflow mismatch: ${currentWorkflowIdFromData} vs ${urlWorkflowId}`
+				);
+			}
+		}
+	}, [chatMessages, urlWorkflowId, queryClient, currentWorkflowData]);
+
+	useEffect(() => {
+		if (currentWorkflowData && urlWorkflowId) {
+			const workflowId =
+				currentWorkflowData.requestId || currentWorkflowData.workflowId;
+			if (workflowId === urlWorkflowId) {
+				const status = currentWorkflowData.workflowStatus;
+				const shouldPoll =
+					status === "in_progress" || status === "waiting_response";
+
+				setIsPolling(shouldPoll);
+
+				if (shouldPoll) {
+					console.log(
+						`🔄 Workflow ${urlWorkflowId} is active (${status}), polling will continue...`
+					);
+				} else {
+					console.log(
+						`🏁 Workflow ${urlWorkflowId} is not active (${status}), polling stopped`
+					);
+				}
+
+				// Debug: Log workflow status for troubleshooting
+				console.log(`🔍 Workflow status debug:`, {
+					workflowId,
+					workflowStatus: currentWorkflowData.workflowStatus,
+					subnets: currentWorkflowData.subnets?.map((s: any) => ({
+						toolName: s.toolName,
+						status: s.status,
+						hasQuestion: !!s.question,
+						questionType: s.question?.type,
+					})),
+				});
+
+				updateMessagesWithSubnetData(
+					currentWorkflowData,
+					lastQuestionRef
+				);
+			} else {
+				console.warn(
+					`⚠️ Skipping message update for different workflow: ${workflowId} vs ${urlWorkflowId}`
+				);
+			}
+		}
+	}, [currentWorkflowData, urlWorkflowId]);
+
+	// Add a cleanup effect that runs when the component unmounts
+	useEffect(() => {
+		return () => {
+			// Ensure all polling is stopped when component unmounts
+			if (currentWorkflowId) {
+				console.log(
+					`🛑 Component unmounting, stopping polling for workflow: ${currentWorkflowId}`
+				);
+				clearWorkflow();
+			}
+
+			// Clear execution status
+			updateExecutionStatus({
+				isRunning: false,
+				responseId: undefined,
+				currentSubnet: undefined,
+			});
+		};
+	}, [currentWorkflowId, clearWorkflow, updateExecutionStatus]);
+
+	useEffect(() => {
+		return () => {
+			clearMessages();
+			clearWorkflow();
+		};
+	}, []);
+
+	// Add a more robust cleanup effect for workflow changes
+	useEffect(() => {
+		// Cleanup function to ensure proper workflow state management
+		const cleanupWorkflow = () => {
+			if (currentWorkflowId && currentWorkflowId !== urlWorkflowId) {
+				console.log(
+					`🧹 Cleaning up previous workflow: ${currentWorkflowId}`
+				);
+				clearWorkflow();
+			}
+		};
+
+		// Cleanup when component unmounts or workflow changes
+		return () => {
+			cleanupWorkflow();
+		};
+	}, [currentWorkflowId, urlWorkflowId, clearWorkflow]);
+
+	// Enhanced workflow switching logic with proper cleanup
+	useEffect(() => {
+		if (isLoading || !skyBrowser || !address) return;
+
+		if (urlWorkflowId && urlWorkflowId.trim().length > 0) {
+			if (currentWorkflowId !== urlWorkflowId) {
+				console.log(
+					`🔄 Switching workflows: ${currentWorkflowId} -> ${urlWorkflowId}`
+				);
+
+				// Immediately stop any existing polling and clear state
+				if (currentWorkflowId) {
+					console.log(
+						`🛑 Stopping polling for previous workflow: ${currentWorkflowId}`
+					);
+					clearWorkflow();
+					// Force a small delay to ensure cleanup completes
+					setTimeout(() => {
+						// Only proceed if we're still on the same workflow
+						if (urlWorkflowId === searchParams.get("workflowId")) {
+							console.log(
+								`🗑️ Clearing messages for workflow switch`
+							);
+							clearMessages();
+							resetFeedbackState();
+
+							setChatMessages([]);
+							setPendingNotifications([]);
+							setIsShowingCachedMessages(false);
+
+							// Load cached messages for the new workflow
+							const cachedMessages =
+								getCachedChatMessages(urlWorkflowId);
+							if (cachedMessages && cachedMessages.length > 0) {
+								console.log(
+									`📋 Loading cached messages for workflow: ${urlWorkflowId}`
+								);
+								setIsShowingCachedMessages(true);
+								setChatMessagesWithWorkflowCheck(
+									cachedMessages,
+									urlWorkflowId
+								);
+							} else {
+								console.log(
+									`📋 No cached messages found for workflow: ${urlWorkflowId}`
+								);
+								setIsShowingCachedMessages(false);
+							}
+
+							// Start polling for the new workflow
+							startPollingExistingWorkflow(
+								urlWorkflowId,
+								skyBrowser,
+								address
+							);
+						}
+					}, 100);
+				} else {
+					// No previous workflow, proceed immediately
+					console.log(`🗑️ Clearing messages for new workflow`);
+					clearMessages();
+					resetFeedbackState();
+
+					setChatMessages([]);
+					setPendingNotifications([]);
+					setIsShowingCachedMessages(false);
+
+					setTimeout(() => {
+						const cachedMessages =
+							getCachedChatMessages(urlWorkflowId);
+						if (cachedMessages && cachedMessages.length > 0) {
+							console.log(
+								`📋 Loading cached messages for workflow: ${urlWorkflowId}`
+							);
+							setIsShowingCachedMessages(true);
+							setChatMessagesWithWorkflowCheck(
+								cachedMessages,
+								urlWorkflowId
+							);
+						} else {
+							console.log(
+								`📋 No cached messages found for workflow: ${urlWorkflowId}`
+							);
+							setIsShowingCachedMessages(false);
+						}
+
+						startPollingExistingWorkflow(
+							urlWorkflowId,
+							skyBrowser,
+							address
+						);
+					}, 0);
+				}
+			}
+		} else if (currentWorkflowId && !urlWorkflowId) {
+			console.log(`🔄 No workflow ID in URL, clearing current workflow`);
+			clearWorkflow();
+			clearMessages();
+			resetFeedbackState();
+
+			setChatMessages([]);
+			setPendingNotifications([]);
+			setIsShowingCachedMessages(false);
+		}
+	}, [
+		isLoading,
+		skyBrowser,
+		address,
+		urlWorkflowId,
+		currentWorkflowId,
+		clearWorkflow,
+		clearMessages,
+		resetFeedbackState,
+		startPollingExistingWorkflow,
+		searchParams,
+	]);
+
+	// Remove the duplicate workflow change effect that was causing conflicts
+	// useEffect(() => {
+	// 	if (
+	// 		urlWorkflowId &&
+	// 		currentWorkflowId &&
+	// 		urlWorkflowId !== currentWorkflowId
+	// 	) {
+	// 		console.log(
+	// 			`🔄 Workflow changed from ${currentWorkflowId} to ${urlWorkflowId}, clearing messages immediately`
+	// 		);
+	// 		clearMessages();
+	// 		resetFeedbackState();
+
+	// 		setChatMessages([]);
+	// 			setPendingNotifications([]);
+	// 			setIsShowingCachedMessages(false);
+	// 		}
+	// 	}, [urlWorkflowId, currentWorkflowId]);
+
+	// Simplified workflow change detection
+	useEffect(() => {
+		if (urlWorkflowId && urlWorkflowId !== previousWorkflowId.current) {
+			console.log(
+				`🔄 URL workflow changed from ${previousWorkflowId.current} to ${urlWorkflowId}`
+			);
+
+			// Only clear if we have a previous workflow to clear
+			if (previousWorkflowId.current) {
+				console.log(`🗑️ Clearing messages for workflow change`);
+				clearMessages();
+				resetFeedbackState();
+
+				setChatMessages([]);
+				setPendingNotifications([]);
+				setIsShowingCachedMessages(false);
+			}
+
+			previousWorkflowId.current = urlWorkflowId;
+		}
+	}, [urlWorkflowId, clearMessages, resetFeedbackState]);
+
 	const {
 		isSubmittingFeedback,
 		handleFeedbackSubmit,
@@ -131,6 +406,19 @@ export default function AgentChatPage() {
 		setWorkflowStatus,
 		setIsExecuting,
 		setIsInFeedbackMode,
+		resumePolling: () => {
+			// Resume polling for the current workflow after feedback
+			if (urlWorkflowId && skyBrowser && address) {
+				console.log(
+					`🔄 Resuming polling for workflow: ${urlWorkflowId}`
+				);
+				startPollingExistingWorkflow(
+					urlWorkflowId,
+					skyBrowser,
+					address
+				);
+			}
+		},
 	});
 
 	useEffect(() => {
@@ -166,7 +454,7 @@ export default function AgentChatPage() {
 		};
 
 		extractOriginalPayload();
-	}, [urlWorkflowId, skyBrowser, address, setChatMessages]);
+	}, [urlWorkflowId, skyBrowser, address]);
 
 	const handleModeChange = (newMode: "chat" | "agent") => {
 		if (newMode === "chat") {
@@ -231,16 +519,6 @@ export default function AgentChatPage() {
 	};
 
 	useEffect(() => {
-		return () => {
-			updateExecutionStatus({
-				isRunning: false,
-				responseId: undefined,
-				currentSubnet: undefined,
-			});
-		};
-	}, [updateExecutionStatus]);
-
-	useEffect(() => {
 		if (isExecuting && currentWorkflowId) {
 			updateExecutionStatus({
 				isRunning: true,
@@ -253,7 +531,7 @@ export default function AgentChatPage() {
 				currentSubnet: undefined,
 			});
 		}
-	}, [isExecuting, currentWorkflowId, updateExecutionStatus]);
+	}, [isExecuting, currentWorkflowId]);
 
 	useEffect(() => {
 		if (
@@ -270,45 +548,7 @@ export default function AgentChatPage() {
 				});
 			}
 		}
-	}, [currentWorkflowData, updateExecutionStatus]);
-
-	useEffect(() => {
-		if (isLoading || !skyBrowser || !address) return;
-
-		if (urlWorkflowId && urlWorkflowId.trim().length > 0) {
-			if (currentWorkflowId !== urlWorkflowId) {
-				if (currentWorkflowId) {
-					clearWorkflow();
-				}
-
-				clearMessages();
-
-				const cachedMessages = getCachedChatMessages(urlWorkflowId);
-				if (cachedMessages && cachedMessages.length > 0) {
-					setChatMessages(cachedMessages);
-				}
-
-				startPollingExistingWorkflow(
-					urlWorkflowId,
-					skyBrowser,
-					address
-				);
-			}
-		} else if (currentWorkflowId && !urlWorkflowId) {
-			clearWorkflow();
-			clearMessages();
-		}
-	}, [
-		isLoading,
-		skyBrowser,
-		address,
-		urlWorkflowId,
-		currentWorkflowId,
-		clearWorkflow,
-		clearMessages,
-		setChatMessages,
-		startPollingExistingWorkflow,
-	]);
+	}, [currentWorkflowData]);
 
 	useEffect(() => {
 		if (isLoading) return;
@@ -392,7 +632,7 @@ export default function AgentChatPage() {
 		return () => {
 			isMounted = false;
 		};
-	}, [agentId, selectedAgent, setSelectedAgent]);
+	}, [agentId, selectedAgent]);
 
 	if (isLoading) {
 		return (
@@ -437,7 +677,7 @@ export default function AgentChatPage() {
 					>
 						{chatMessages.map((message, index) => (
 							<ChatMessage
-								key={message.id}
+								key={`${urlWorkflowId}-${message.id}`}
 								message={message}
 								isLast={index === chatMessages.length - 1}
 								onNotificationYes={handleNotificationYes}
@@ -448,9 +688,16 @@ export default function AgentChatPage() {
 								onFeedbackSubmit={handleFeedbackSubmit}
 								onFeedbackProceed={handleFeedbackProceed}
 								showFeedbackButtons={
+									!isShowingCachedMessages &&
 									message.type === "question" &&
 									message.questionData?.type !==
-										"authentication"
+										"authentication" &&
+									(message.subnetStatus ===
+										"waiting_response" ||
+										message.subnetStatus === "pending" ||
+										currentWorkflowData?.workflowStatus ===
+											"waiting_response" ||
+										workflowStatus === "waiting_response")
 								}
 								workflowStatus={workflowStatus}
 							/>

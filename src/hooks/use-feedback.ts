@@ -15,6 +15,7 @@ interface UseFeedbackProps {
 	setWorkflowStatus: (status: any) => void;
 	setIsExecuting: (executing: boolean) => void;
 	setIsInFeedbackMode: (inMode: boolean) => void;
+	resumePolling?: () => void; // Add function to resume polling
 }
 
 export const useFeedback = ({
@@ -27,6 +28,7 @@ export const useFeedback = ({
 	setWorkflowStatus,
 	setIsExecuting,
 	setIsInFeedbackMode,
+	resumePolling,
 }: UseFeedbackProps) => {
 	const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
 	const { updateSubnetStatus } = useSubnetCacheStore();
@@ -78,20 +80,24 @@ export const useFeedback = ({
 		try {
 			setIsSubmittingFeedback(true);
 
-			const waitingSubnetIndex = currentWorkflowData?.subnets?.findIndex(
-				(subnet: any) =>
-					subnet.status === "waiting_response" && subnet.question
-			);
+			// Look for subnets with questions in either waiting_response or pending status
+			const subnetWithQuestionIndex =
+				currentWorkflowData?.subnets?.findIndex(
+					(subnet: any) =>
+						(subnet.status === "waiting_response" ||
+							(subnet.status === "pending" && subnet.question)) &&
+						subnet.question
+				);
 
 			if (
-				waitingSubnetIndex !== undefined &&
-				waitingSubnetIndex >= 0 &&
+				subnetWithQuestionIndex !== undefined &&
+				subnetWithQuestionIndex >= 0 &&
 				currentWorkflowId
 			) {
 				// Update subnet status to in_progress to indicate feedback processing
 				updateSubnetStatus(
 					currentWorkflowId,
-					waitingSubnetIndex,
+					subnetWithQuestionIndex,
 					"in_progress"
 				);
 			}
@@ -122,15 +128,23 @@ export const useFeedback = ({
 			const successMessage: ChatMsg = {
 				id: `success_${Date.now()}`,
 				type: "response",
-				content: "Feedback submitted successfully",
+				content:
+					"Feedback submitted successfully. Resuming workflow...",
 				timestamp: new Date(),
 			};
 			setChatMessages((prev) => [...prev, successMessage]);
 
 			setPrompt("");
+			// Resume workflow execution regardless of previous status
 			setWorkflowStatus("running");
 			setIsExecuting(true);
 			setIsInFeedbackMode(false);
+
+			// Resume polling to get updated workflow data
+			if (resumePolling) {
+				console.log("🔄 Resuming polling after feedback submission");
+				resumePolling();
+			}
 		} catch (error) {
 			setChatMessages((prev) =>
 				prev.filter((msg) => msg.content !== "Submitting feedback...")
@@ -154,20 +168,24 @@ export const useFeedback = ({
 		try {
 			setIsSubmittingFeedback(true);
 
-			const waitingSubnetIndex = currentWorkflowData?.subnets?.findIndex(
-				(subnet: any) =>
-					subnet.status === "waiting_response" && subnet.question
-			);
+			// Look for subnets with questions in either waiting_response or pending status
+			const subnetWithQuestionIndex =
+				currentWorkflowData?.subnets?.findIndex(
+					(subnet: any) =>
+						(subnet.status === "waiting_response" ||
+							(subnet.status === "pending" && subnet.question)) &&
+						subnet.question
+				);
 
 			if (
-				waitingSubnetIndex !== undefined &&
-				waitingSubnetIndex >= 0 &&
+				subnetWithQuestionIndex !== undefined &&
+				subnetWithQuestionIndex >= 0 &&
 				currentWorkflowId
 			) {
 				// Update subnet status to in_progress to indicate feedback processing
 				updateSubnetStatus(
 					currentWorkflowId,
-					waitingSubnetIndex,
+					subnetWithQuestionIndex,
 					"in_progress"
 				);
 			}
@@ -198,15 +216,23 @@ export const useFeedback = ({
 			const successMessage: ChatMsg = {
 				id: `success_${Date.now()}`,
 				type: "response",
-				content: "Feedback processed successfully",
+				content:
+					"Feedback processed successfully. Resuming workflow...",
 				timestamp: new Date(),
 			};
 			setChatMessages((prev) => [...prev, successMessage]);
 
 			setPrompt("");
+			// Resume workflow execution regardless of previous status
 			setWorkflowStatus("running");
 			setIsExecuting(true);
 			setIsInFeedbackMode(false);
+
+			// Resume polling to get updated workflow data
+			if (resumePolling) {
+				console.log("🔄 Resuming polling after feedback submission");
+				resumePolling();
+			}
 		} catch (error) {
 			setChatMessages((prev) =>
 				prev.filter((msg) => msg.content !== "Processing feedback...")
@@ -230,20 +256,24 @@ export const useFeedback = ({
 		try {
 			setIsSubmittingFeedback(true);
 
-			const waitingSubnetIndex = currentWorkflowData?.subnets?.findIndex(
-				(subnet: any) =>
-					subnet.status === "waiting_response" && subnet.question
-			);
+			// Look for subnets with questions in either waiting_response or pending status
+			const subnetWithQuestionIndex =
+				currentWorkflowData?.subnets?.findIndex(
+					(subnet: any) =>
+						(subnet.status === "waiting_response" ||
+							(subnet.status === "pending" && subnet.question)) &&
+						subnet.question
+				);
 
 			if (
-				waitingSubnetIndex !== undefined &&
-				waitingSubnetIndex >= 0 &&
+				subnetWithQuestionIndex !== undefined &&
+				subnetWithQuestionIndex >= 0 &&
 				currentWorkflowId
 			) {
 				// Update subnet status to in_progress to indicate feedback processing
 				updateSubnetStatus(
 					currentWorkflowId,
-					waitingSubnetIndex,
+					subnetWithQuestionIndex,
 					"in_progress"
 				);
 			}
@@ -259,7 +289,9 @@ export const useFeedback = ({
 
 			const subnetWithQuestion = currentWorkflowData?.subnets?.find(
 				(subnet: any) =>
-					subnet.status === "waiting_response" && subnet.question
+					(subnet.status === "waiting_response" ||
+						(subnet.status === "pending" && subnet.question)) &&
+					subnet.question
 			);
 
 			if (!subnetWithQuestion?.question?.text) {
@@ -286,15 +318,23 @@ export const useFeedback = ({
 			const successMessage: ChatMsg = {
 				id: `success_${Date.now()}`,
 				type: "response",
-				content: "Feedback submitted successfully",
+				content:
+					"Feedback submitted successfully. Resuming workflow...",
 				timestamp: new Date(),
 			};
 			setChatMessages((prev) => [...prev, successMessage]);
 
 			setPrompt("");
+			// Resume workflow execution regardless of previous status
 			setWorkflowStatus("running");
 			setIsExecuting(true);
 			setIsInFeedbackMode(false);
+
+			// Resume polling to get updated workflow data
+			if (resumePolling) {
+				console.log("🔄 Resuming polling after feedback submission");
+				resumePolling();
+			}
 		} catch (error) {
 			setChatMessages((prev) =>
 				prev.filter((msg) => msg.content !== "Submitting feedback...")
