@@ -66,6 +66,7 @@ export const useChatMessages = () => {
 
 			currentWorkflowId.current = workflowId;
 
+			// Always process subnets with their feedbackHistory if available
 			const newMessages = processSubnetData(
 				workflowId,
 				data.subnets,

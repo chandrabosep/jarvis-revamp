@@ -34,6 +34,21 @@ export type ChatMsg = {
 	answer?: string;
 };
 
+export type FeedbackHistoryItem = {
+	workflow_id: string;
+	item_id: number;
+	feedback_question: string;
+	response: {
+		success: boolean;
+		message: string;
+		data: any;
+	};
+	user_answer: string | null;
+	continue: boolean;
+	created_at: string;
+	updated_at: string;
+};
+
 export type WorkflowStatus =
 	| "running"
 	| "stopped"

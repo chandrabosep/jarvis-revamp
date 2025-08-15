@@ -185,13 +185,18 @@ export const useSubnetCache = () => {
 				// 3. Moving from in_progress to done/waiting_response (has meaningful data)
 				// 4. Pending subnets with substantial data (not just status messages)
 				// 5. BUT NOT when resuming workflow (prevents duplication)
+				// 6. Skip regular message generation if feedback history exists (it contains the same data)
 				const hasSubstantialData =
 					subnet.data &&
 					subnet.data.length > 50 &&
 					!subnet.data.includes("Queued for processing") &&
 					!subnet.data.includes("Processing with");
 
+				const hasFeedbackHistory =
+					subnet.feedbackHistory && subnet.feedbackHistory.length > 0;
+
 				const shouldGenerateMessage =
+					!hasFeedbackHistory && // Skip if feedback history exists
 					!isResumingWorkflow && // Prevent message generation during workflow resumption
 					((hasChanged && prevStatus) || // Status changed from a previous state
 						(subnet.status === "in_progress" &&
@@ -346,9 +351,127 @@ export const useSubnetCache = () => {
 							);
 						}
 					}
+				}
+
+				// Handle feedback history - show as individual messages (always process when available)
+				if (hasFeedbackHistory) {
+					console.log(
+						`📋 Processing feedback history for subnet ${index} with ${subnet.feedbackHistory.length} items`
+					);
+					subnet.feedbackHistory.forEach(
+						(feedbackItem: any, feedbackIndex: number) => {
+							const feedbackBaseKey = `feedback_${workflowId}_${index}_${feedbackIndex}`;
+
+							// Create system response message from feedback history
+							const responseKey = `${feedbackBaseKey}_response`;
+							if (!messageIds.has(responseKey)) {
+								const responseMessage: ChatMsg = {
+									id: `feedback_response_${index}_${feedbackIndex}_${Date.now()}`,
+									type: "response",
+									content: feedbackItem.response.message,
+									timestamp: new Date(
+										feedbackItem.created_at
+									),
+									toolName: subnet.toolName,
+									subnetIndex: index,
+									sourceId: `subnet_${index}_feedback_response_${feedbackIndex}`,
+								};
+								dataMessages.push(responseMessage);
+								messageIds.add(responseKey);
+								console.log(
+									`📋 Feedback response message generated for subnet ${index}, feedback ${feedbackIndex}`
+								);
+							}
+
+							// Create question message from feedback history
+							const questionKey = `${feedbackBaseKey}_question`;
+							if (!messageIds.has(questionKey)) {
+								const questionMessage: ChatMsg = {
+									id: `feedback_question_${index}_${feedbackIndex}_${Date.now()}`,
+									type: "question",
+									content: feedbackItem.feedback_question,
+									timestamp: new Date(
+										feedbackItem.created_at
+									),
+									toolName: subnet.toolName,
+									subnetIndex: index,
+									questionData: {
+										type: "feedback",
+										text: feedbackItem.feedback_question,
+										itemID: feedbackItem.item_id,
+										expiresAt: feedbackItem.updated_at,
+									},
+									sourceId: `subnet_${index}_feedback_question_${feedbackIndex}`,
+								};
+								questionMessages.push(questionMessage);
+								messageIds.add(questionKey);
+								console.log(
+									`📋 Feedback question message generated for subnet ${index}, feedback ${feedbackIndex}`
+								);
+							}
+
+							// Create answer message if user provided an answer
+							if (
+								feedbackItem.user_answer &&
+								feedbackItem.user_answer.trim() !== ""
+							) {
+								const answerKey = `${feedbackBaseKey}_answer`;
+								if (!messageIds.has(answerKey)) {
+									const answerMessage: ChatMsg = {
+										id: `feedback_answer_${index}_${feedbackIndex}_${Date.now()}`,
+										type: "answer",
+										content: feedbackItem.user_answer,
+										timestamp: new Date(
+											feedbackItem.updated_at
+										),
+										toolName: subnet.toolName,
+										subnetIndex: index,
+										sourceId: `subnet_${index}_feedback_answer_${feedbackIndex}`,
+									};
+									questionMessages.push(answerMessage);
+									messageIds.add(answerKey);
+									console.log(
+										`📋 Feedback answer message generated for subnet ${index}, feedback ${feedbackIndex}`
+									);
+								}
+							}
+						}
+					);
+
+					// Handle current question if it's different from feedback history
+					if (subnet.question) {
+						const lastFeedbackQuestion =
+							subnet.feedbackHistory[
+								subnet.feedbackHistory.length - 1
+							]?.feedback_question;
+						const isNewQuestion =
+							subnet.question.text !== lastFeedbackQuestion;
+
+						if (isNewQuestion) {
+							const currentQuestionKey = `current_question_${workflowId}_${index}`;
+							if (!messageIds.has(currentQuestionKey)) {
+								const currentQuestionMessage: ChatMsg = {
+									id: `current_question_${index}_${Date.now()}`,
+									type: "question",
+									content: subnet.question.text,
+									timestamp: new Date(),
+									subnetStatus: subnet.status,
+									toolName: subnet.toolName,
+									subnetIndex: index,
+									questionData: subnet.question,
+									sourceId: `subnet_${index}_current_question`,
+								};
+								questionMessages.push(currentQuestionMessage);
+								messageIds.add(currentQuestionKey);
+								console.log(
+									`📋 Current question message generated for subnet ${index}`
+								);
+							}
+						}
+					}
 				} else {
 					console.log(
-						`⏭️ Skipping subnet ${index} - no changes detected`
+						`⏭️ Skipping subnet ${index} - no changes detected or no feedback history`
 					);
 				}
 
@@ -362,8 +485,18 @@ export const useSubnetCache = () => {
 				}
 			});
 
-			// Combine data messages and question messages, with questions at the end
-			const allMessages = [...dataMessages, ...questionMessages];
+			// Combine all messages and sort by timestamp for proper chronological order
+			const allMessages = [...dataMessages, ...questionMessages].sort(
+				(a, b) => {
+					const timeA = a.timestamp
+						? new Date(a.timestamp).getTime()
+						: 0;
+					const timeB = b.timestamp
+						? new Date(b.timestamp).getTime()
+						: 0;
+					return timeA - timeB;
+				}
+			);
 
 			console.log(
 				`📝 Generated ${allMessages.length} messages for workflow ${workflowId} (${dataMessages.length} data, ${questionMessages.length} questions)`

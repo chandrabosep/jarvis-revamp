@@ -19,6 +19,7 @@ import {
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { MDXRenderer, isMarkdownContent } from "./mdx-renderer";
+import { ChatMsg } from "@/types/chat";
 import Link from "next/link";
 
 function convertUrlsToLinks(text: string): React.ReactNode {
@@ -45,40 +46,7 @@ function convertUrlsToLinks(text: string): React.ReactNode {
 }
 
 interface ChatMessageProps {
-	message: {
-		id: string;
-		type:
-			| "user"
-			| "response"
-			| "question"
-			| "answer"
-			| "pending"
-			| "workflow_subnet"
-			| "notification";
-		content: string;
-		timestamp: Date;
-		agentName?: string;
-		subnetStatus?:
-			| "pending"
-			| "in_progress"
-			| "done"
-			| "failed"
-			| "waiting_response";
-		toolName?: string;
-		subnetIndex?: number;
-		imageData?: string;
-		isImage?: boolean;
-		contentType?: string;
-		questionData?: {
-			type: string;
-			text: string;
-			itemID: number;
-			expiresAt: string;
-		};
-		sourceId?: string;
-		question?: string;
-		answer?: string;
-	};
+	message: ChatMsg;
 	isLast?: boolean;
 	onNotificationYes?: (notification: any) => Promise<void>;
 	onNotificationNo?: (notification: any) => Promise<void>;
