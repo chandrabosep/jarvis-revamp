@@ -66,11 +66,9 @@ interface ChatMessageProps {
 			| "waiting_response";
 		toolName?: string;
 		subnetIndex?: number;
-		// File data fields
 		imageData?: string;
 		isImage?: boolean;
 		contentType?: string;
-		// Question specific fields for authentication
 		questionData?: {
 			type: string;
 			text: string;
@@ -78,7 +76,6 @@ interface ChatMessageProps {
 			expiresAt: string;
 		};
 		sourceId?: string;
-		// Feedback specific fields
 		question?: string;
 		answer?: string;
 	};
@@ -86,7 +83,6 @@ interface ChatMessageProps {
 	onNotificationYes?: (notification: any) => Promise<void>;
 	onNotificationNo?: (notification: any) => Promise<void>;
 	isPendingNotification?: boolean;
-	// Feedback handlers
 	onFeedbackProceed?: (question: string, answer: string) => Promise<void>;
 	onFeedbackSubmit?: (
 		question: string,
@@ -108,10 +104,6 @@ export function ChatMessage({
 	showFeedbackButtons = false,
 	workflowStatus,
 }: ChatMessageProps) {
-	// Interactive elements (feedback buttons, auth buttons, notification buttons) are only shown
-	// when the workflow/subnet status is "waiting_response". For all other statuses
-	// (pending, in_progress, done, failed, etc.), these elements are hidden to prevent
-	// user interaction during processing.
 	const [showFeedbackInput, setShowFeedbackInput] = useState(false);
 	const [feedbackText, setFeedbackText] = useState("");
 	const [hideAuthButton, setHideAuthButton] = useState(false);
@@ -119,36 +111,25 @@ export function ChatMessage({
 	const [hideNotificationButtons, setHideNotificationButtons] =
 		useState(false);
 
-	// Helper function to check if interactive elements should be hidden
 	const shouldHideInteractiveElements = () => {
-		// Allow interactive elements for:
-		// 1. waiting_response status (explicitly waiting for user input)
-		// 2. pending status with questions (subnets that have data and are waiting for feedback)
 		const shouldHide =
 			message.subnetStatus !== "waiting_response" &&
 			workflowStatus !== "waiting_response";
 
-		// Additional check: if we have a specific subnet status, prioritize it
 		if (message.subnetStatus) {
-			// Allow interactive elements for pending subnets with questions
 			if (message.subnetStatus === "pending" && message.questionData) {
-				return false; // Don't hide interactive elements for pending subnets with questions
+				return false;
 			}
 			return message.subnetStatus !== "waiting_response";
 		}
 
-		// Fall back to overall workflow status
 		return shouldHide;
 	};
 
-	// Helper function to check if message content should be hidden
 	const shouldHideMessageContent = () => {
-		// Never hide the actual content of messages
-		// Only hide interactive elements, not the content itself
 		return false;
 	};
 
-	// Debug: Log message details for troubleshooting
 	console.log(`🔍 ChatMessage debug:`, {
 		messageType: message.type,
 		subnetStatus: message.subnetStatus,
@@ -160,7 +141,6 @@ export function ChatMessage({
 		questionType: message.questionData?.type,
 	});
 
-	// Helper function to check if specific elements should be hidden
 	const shouldHideAuthButton = () =>
 		shouldHideInteractiveElements() || hideAuthButton;
 	const shouldHideFeedbackButtons = () =>
@@ -168,7 +148,6 @@ export function ChatMessage({
 	const shouldHideNotificationButtons = () =>
 		shouldHideInteractiveElements() || hideNotificationButtons;
 
-	// User message - the initial prompt
 	if (message.type === "user") {
 		return (
 			<div className="relative mb-0">
@@ -176,7 +155,6 @@ export function ChatMessage({
 					<h2 className="text-2xl font-bold text-white leading-tight mb-2 capitalize">
 						{message.content}
 					</h2>
-					{/* Display file content if present */}
 					{message.imageData && (
 						<div className="mt-3">
 							{message.isImage ? (
