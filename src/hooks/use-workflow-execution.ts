@@ -11,7 +11,11 @@ import { AgentDetail } from "@/types";
 interface UseWorkflowExecutionProps {
 	updateMessagesWithSubnetData: (
 		data: any,
-		lastQuestionRef: React.MutableRefObject<string | null>
+		lastQuestionRef: React.MutableRefObject<string | null>,
+		options?: {
+			includeHistory?: boolean;
+			isExistingWorkflow?: boolean;
+		}
 	) => void;
 	setChatMessages: React.Dispatch<React.SetStateAction<ChatMsg[]>>;
 	setPrompt: (prompt: string) => void;
@@ -44,9 +48,15 @@ export const useWorkflowExecution = ({
 	const { clearWorkflowCache } = useSubnetCacheStore();
 
 	const createStatusUpdateHandler = useCallback(
-		(isNewWorkflow = false) => {
+		(isNewWorkflow = false, isExistingWorkflow = false) => {
+			let isFirstUpdate = true;
+
 			return (data: any) => {
-				console.log("📊 Status update received:", data);
+				console.log("📊 Status update received:", data, {
+					isNewWorkflow,
+					isExistingWorkflow,
+					isFirstUpdate,
+				});
 				setCurrentWorkflowData(data);
 
 				const workflowId = data?.requestId || data?.workflowId;
@@ -247,7 +257,7 @@ export const useWorkflowExecution = ({
 					setWorkflowId(workflowId);
 				}
 
-				const onStatusUpdate = createStatusUpdateHandler(false);
+				const onStatusUpdate = createStatusUpdateHandler(false, true); // isExistingWorkflow = true
 
 				const success =
 					await workflowExecutor.startPollingExistingWorkflow(
@@ -304,7 +314,7 @@ export const useWorkflowExecution = ({
 				};
 				setChatMessages([userMessage]);
 
-				const onStatusUpdate = createStatusUpdateHandler(true);
+				const onStatusUpdate = createStatusUpdateHandler(true, false); // isNewWorkflow = true
 
 				const workflowId = await executeAgentWorkflow(
 					selectedAgent as any,

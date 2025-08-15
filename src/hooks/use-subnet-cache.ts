@@ -67,12 +67,20 @@ export const useSubnetCache = () => {
 		(
 			workflowId: string,
 			subnetData: any[],
-			lastQuestionRef: React.MutableRefObject<string | null>
+			lastQuestionRef: React.MutableRefObject<string | null>,
+			options: {
+				includeHistory?: boolean;
+				isExistingWorkflow?: boolean;
+			} = {}
 		): ChatMsg[] => {
+			const { includeHistory = true, isExistingWorkflow = false } =
+				options;
+
 			console.log(
 				`🔄 Processing subnet data for workflow ${workflowId}:`,
 				subnetData?.length || 0,
-				"subnets"
+				"subnets",
+				`includeHistory: ${includeHistory}, isExistingWorkflow: ${isExistingWorkflow}`
 			);
 
 			if (!subnetData || subnetData.length === 0) return [];
@@ -196,7 +204,7 @@ export const useSubnetCache = () => {
 					subnet.feedbackHistory && subnet.feedbackHistory.length > 0;
 
 				const shouldGenerateMessage =
-					!hasFeedbackHistory && // Skip if feedback history exists
+					(!hasFeedbackHistory || !includeHistory) && // Skip if feedback history exists AND we're including history
 					!isResumingWorkflow && // Prevent message generation during workflow resumption
 					((hasChanged && prevStatus) || // Status changed from a previous state
 						(subnet.status === "in_progress" &&
@@ -204,11 +212,30 @@ export const useSubnetCache = () => {
 						(subnet.status === "done" && subnet.data) || // Completed with data
 						(subnet.status === "waiting_response" &&
 							subnet.data &&
-							prevStatus) || // Has data and waiting for response (but not on resume)
+							(prevStatus || !includeHistory)) || // Has data and waiting for response - always show during real-time updates
 						(subnet.status === "pending" && hasSubstantialData) || // Pending with real data
 						(prevStatus === "in_progress" &&
 							subnet.status !== "in_progress") || // Transition away from processing
 						isQuestionArrivingLater); // Question arriving later should always generate message
+
+				console.log(
+					`🔍 Message generation check for subnet ${index}:`,
+					{
+						shouldGenerateMessage,
+						hasFeedbackHistory,
+						includeHistory,
+						hasChanged,
+						prevStatus,
+						currentStatus: subnet.status,
+						hasSubstantialData,
+						isResumingWorkflow,
+						hasData: !!subnet.data,
+						hasQuestion: !!subnet.question,
+						dataPreview: subnet.data
+							? JSON.stringify(subnet.data).slice(0, 100)
+							: "no-data",
+					}
+				);
 
 				if (shouldGenerateMessage) {
 					console.log(
@@ -353,11 +380,20 @@ export const useSubnetCache = () => {
 					}
 				}
 
-				// Handle feedback history - show as individual messages (always process when available)
+				// Handle feedback history - show as individual messages (only when includeHistory is true)
 				if (hasFeedbackHistory) {
-					console.log(
-						`📋 Processing feedback history for subnet ${index} with ${subnet.feedbackHistory.length} items`
-					);
+					if (includeHistory) {
+						console.log(
+							`📋 Processing feedback history for subnet ${index} with ${subnet.feedbackHistory.length} items`
+						);
+					} else {
+						console.log(
+							`⏭️ Skipping feedback history for subnet ${index} (includeHistory=false) - ${subnet.feedbackHistory.length} items`
+						);
+					}
+				}
+
+				if (hasFeedbackHistory && includeHistory) {
 					subnet.feedbackHistory.forEach(
 						(feedbackItem: any, feedbackIndex: number) => {
 							const feedbackBaseKey = `feedback_${workflowId}_${index}_${feedbackIndex}`;
@@ -454,7 +490,7 @@ export const useSubnetCache = () => {
 									id: `current_question_${index}_${Date.now()}`,
 									type: "question",
 									content: subnet.question.text,
-									timestamp: new Date(),
+									timestamp: new Date(Date.now() + 200), // Ensure question appears after data messages
 									subnetStatus: subnet.status,
 									toolName: subnet.toolName,
 									subnetIndex: index,
@@ -464,7 +500,13 @@ export const useSubnetCache = () => {
 								questionMessages.push(currentQuestionMessage);
 								messageIds.add(currentQuestionKey);
 								console.log(
-									`📋 Current question message generated for subnet ${index}`
+									`📋 Current question message generated for subnet ${index}`,
+									{
+										questionText:
+											subnet.question.text?.slice(0, 50),
+										timestamp:
+											currentQuestionMessage.timestamp,
+									}
 								);
 							}
 						}
@@ -511,6 +553,7 @@ export const useSubnetCache = () => {
 					content: msg.content?.slice(0, 50),
 					subnetStatus: msg.subnetStatus,
 					toolName: msg.toolName,
+					timestamp: msg.timestamp,
 				}))
 			);
 			return allMessages;
@@ -625,7 +668,7 @@ export const useSubnetCache = () => {
 								id: `subnet_${index}_data_${Date.now()}`,
 								type: "workflow_subnet" as const,
 								content,
-								timestamp: new Date(),
+								timestamp: new Date(Date.now() - 50), // Ensure data message appears before question
 								subnetStatus: "done" as const, // Show as completed since it has data
 								toolName: subnet.toolName,
 								subnetIndex: index,
@@ -646,7 +689,7 @@ export const useSubnetCache = () => {
 									id: `subnet_${index}_question_${Date.now()}`,
 									type: "question" as const,
 									content: questionData.text,
-									timestamp: new Date(),
+									timestamp: new Date(Date.now() + 100), // Ensure question appears after data messages
 									subnetStatus: "waiting_response" as const,
 									toolName: subnet.toolName,
 									subnetIndex: index,
@@ -733,7 +776,7 @@ export const useSubnetCache = () => {
 								id: `subnet_${index}_data_${Date.now()}`,
 								type: "workflow_subnet" as const,
 								content: content || "Data received",
-								timestamp: new Date(),
+								timestamp: new Date(Date.now() - 50), // Ensure data message appears before question
 								subnetStatus: "done" as const,
 								toolName: subnet.toolName,
 								subnetIndex: index,
@@ -859,6 +902,7 @@ export const useSubnetCache = () => {
 								{
 									contentPreview: content?.slice(0, 50),
 									hasImageData: !!result.imageData,
+									timestamp: new Date(Date.now() - 50),
 								}
 							);
 
@@ -866,7 +910,7 @@ export const useSubnetCache = () => {
 								id: `subnet_${index}_data_${Date.now()}`,
 								type: "workflow_subnet" as const,
 								content: content || "Data received",
-								timestamp: new Date(),
+								timestamp: new Date(Date.now() - 50), // Ensure data message appears before question
 								subnetStatus: "done" as const,
 								toolName: subnet.toolName,
 								subnetIndex: index,
@@ -902,6 +946,10 @@ export const useSubnetCache = () => {
 								questionType: finalQuestionData?.type,
 								hasDataContent,
 								hasDirectQuestion,
+								timestamp: new Date(
+									Date.now() +
+										(isQuestionArrivingLater ? 1000 : 100)
+								),
 							}
 						);
 

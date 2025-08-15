@@ -45,12 +45,21 @@ export const useChatMessages = () => {
 	);
 
 	const updateMessagesWithSubnetData = useCallback(
-		(data: any, lastQuestionRef: React.MutableRefObject<string | null>) => {
+		(
+			data: any,
+			lastQuestionRef: React.MutableRefObject<string | null>,
+			options: {
+				includeHistory?: boolean;
+				isExistingWorkflow?: boolean;
+			} = {}
+		) => {
 			const workflowId =
 				data.requestId || data.workflowId || `workflow_${Date.now()}`;
 
 			console.log(
-				`🔄 Processing workflow: ${workflowId}, Current: ${currentWorkflowId.current}`
+				`🔄 Processing workflow: ${workflowId}, Current: ${currentWorkflowId.current}`,
+				`Options:`,
+				options
 			);
 
 			if (
@@ -66,11 +75,12 @@ export const useChatMessages = () => {
 
 			currentWorkflowId.current = workflowId;
 
-			// Always process subnets with their feedbackHistory if available
+			// Process subnets with options to control feedback history inclusion
 			const newMessages = processSubnetData(
 				workflowId,
 				data.subnets,
-				lastQuestionRef
+				lastQuestionRef,
+				options
 			);
 
 			console.log(`🔍 Subnet data processing results:`, {

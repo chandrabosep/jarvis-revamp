@@ -96,6 +96,7 @@ export default function AgentChatPage() {
 	const hasAutoSubmittedRef = useRef(false);
 	const lastQuestionRef = useRef<string | null>(null);
 	const previousWorkflowId = useRef<string | null>(null);
+	const isLoadingExistingWorkflow = useRef(false);
 
 	useScrollOnNewMessages(chatMessages.length);
 
@@ -176,9 +177,24 @@ export default function AgentChatPage() {
 					})),
 				});
 
+				// Check if this is the first update for an existing workflow
+				const shouldIncludeHistory = isLoadingExistingWorkflow.current;
+
+				// Reset the flag after first update
+				if (isLoadingExistingWorkflow.current) {
+					console.log(
+						`📋 First update for existing workflow - including history`
+					);
+					isLoadingExistingWorkflow.current = false;
+				}
+
 				updateMessagesWithSubnetData(
 					currentWorkflowData,
-					lastQuestionRef
+					lastQuestionRef,
+					{
+						includeHistory: shouldIncludeHistory, // Include history only on first load of existing workflow
+						isExistingWorkflow: shouldIncludeHistory,
+					}
 				);
 			} else {
 				console.warn(
@@ -312,11 +328,15 @@ export default function AgentChatPage() {
 								cachedMessages,
 								urlWorkflowId
 							);
+							// Don't include history since cached messages already have it
+							isLoadingExistingWorkflow.current = false;
 						} else {
 							console.log(
 								`📋 No cached messages found for workflow: ${urlWorkflowId}`
 							);
 							setIsShowingCachedMessages(false);
+							// Include history on first load since no cached messages
+							isLoadingExistingWorkflow.current = true;
 						}
 
 						startPollingExistingWorkflow(
