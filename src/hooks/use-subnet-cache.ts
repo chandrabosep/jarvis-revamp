@@ -135,6 +135,13 @@ export const useSubnetCache = () => {
 					prevStatus === "in_progress" &&
 					currentStatus === "waiting_response";
 
+				// Special case: Detect workflow resumption scenario
+				// This happens when we have no previous status but subnet is already in waiting_response with data
+				const isResumingWorkflow =
+					!prevStatus &&
+					currentStatus === "waiting_response" &&
+					subnet.data;
+
 				if (isRegenerating) {
 					console.log(
 						`🔄 Subnet ${index} is regenerating after feedback`
@@ -142,6 +149,11 @@ export const useSubnetCache = () => {
 				}
 				if (isShowingQuestion) {
 					console.log(`❓ Subnet ${index} is showing question`);
+				}
+				if (isResumingWorkflow) {
+					console.log(
+						`🔄 Subnet ${index} is resuming workflow in waiting_response state`
+					);
 				}
 
 				// Update tracking maps
@@ -159,6 +171,7 @@ export const useSubnetCache = () => {
 				// 2. Moving from pending to in_progress (start processing)
 				// 3. Moving from in_progress to done/waiting_response (has meaningful data)
 				// 4. Pending subnets with substantial data (not just status messages)
+				// 5. BUT NOT when resuming workflow (prevents duplication)
 				const hasSubstantialData =
 					subnet.data &&
 					subnet.data.length > 50 &&
@@ -166,14 +179,17 @@ export const useSubnetCache = () => {
 					!subnet.data.includes("Processing with");
 
 				const shouldGenerateMessage =
-					(hasChanged && prevStatus) || // Status changed from a previous state
-					(subnet.status === "in_progress" &&
-						prevStatus === "pending") || // Start processing
-					(subnet.status === "done" && subnet.data) || // Completed with data
-					(subnet.status === "waiting_response" && subnet.data) || // Has data and waiting for response
-					(subnet.status === "pending" && hasSubstantialData) || // Pending with real data
-					(prevStatus === "in_progress" &&
-						subnet.status !== "in_progress"); // Transition away from processing
+					!isResumingWorkflow && // Prevent message generation during workflow resumption
+					((hasChanged && prevStatus) || // Status changed from a previous state
+						(subnet.status === "in_progress" &&
+							prevStatus === "pending") || // Start processing
+						(subnet.status === "done" && subnet.data) || // Completed with data
+						(subnet.status === "waiting_response" &&
+							subnet.data &&
+							prevStatus) || // Has data and waiting for response (but not on resume)
+						(subnet.status === "pending" && hasSubstantialData) || // Pending with real data
+						(prevStatus === "in_progress" &&
+							subnet.status !== "in_progress")); // Transition away from processing
 
 				if (shouldGenerateMessage) {
 					console.log(
@@ -200,10 +216,12 @@ export const useSubnetCache = () => {
 							// Use message type and content for better deduplication
 							let messageKey;
 							if (message.type === "question") {
-								messageKey = `${workflowId}_${index}_question_${message.content?.slice(
-									0,
-									50
-								)}`;
+								// For questions, include question text and type for uniqueness
+								const questionData =
+									message.questionData || subnet.question;
+								messageKey = `${workflowId}_${index}_question_${
+									questionData?.type
+								}_${message.content?.slice(0, 50)}`;
 							} else if (
 								subnet.status === "pending" &&
 								subnet.data
@@ -211,6 +229,21 @@ export const useSubnetCache = () => {
 								messageKey = `${workflowId}_${index}_pending_with_data_${JSON.stringify(
 									subnet.data
 								).slice(0, 100)}`;
+							} else if (
+								message.type === "workflow_subnet" &&
+								message.subnetStatus === "waiting_response"
+							) {
+								// Special handling for waiting_response messages to prevent duplicates during resumption
+								const dataHash = subnet.data
+									? JSON.stringify(subnet.data).slice(0, 100)
+									: "no-data";
+								const questionHash = subnet.question
+									? JSON.stringify(subnet.question).slice(
+											0,
+											100
+									  )
+									: "no-question";
+								messageKey = `${workflowId}_${index}_waiting_response_${dataHash}_${questionHash}`;
 							} else {
 								messageKey = `${workflowId}_${index}_${
 									message.type
@@ -238,11 +271,14 @@ export const useSubnetCache = () => {
 									`Content: "${message.content?.slice(
 										0,
 										50
-									)}..."`
+									)}..."`,
+									`Status: ${message.subnetStatus || "N/A"}`
 								);
 							} else {
 								console.log(
-									`⏭️ Skipping duplicate message for subnet ${index}`
+									`⏭️ Skipping duplicate message for subnet ${index}:`,
+									message.type,
+									`Status: ${message.subnetStatus || "N/A"}`
 								);
 							}
 						} else {

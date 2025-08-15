@@ -168,6 +168,24 @@ export const useSubnetCacheStore = create<SubnetCacheStoreState>()(
 			});
 
 			const hasChanged = cached.contentHash !== newContentHash;
+
+			// Special handling for workflow resumption scenarios
+			// If the subnet is in waiting_response with the same data/question, don't consider it changed
+			// even if the status temporarily appeared different during resumption
+			const isWaitingResponseResumption =
+				cached.status === "waiting_response" &&
+				newData.status === "waiting_response" &&
+				cached.data === newData.data &&
+				JSON.stringify(cached.question) ===
+					JSON.stringify(newData.question);
+
+			if (isWaitingResponseResumption && !hasChanged) {
+				console.log(
+					`🔄 Subnet ${subnetIndex} in workflow ${workflowId}: Detected workflow resumption - no actual change`
+				);
+				return false;
+			}
+
 			console.log(
 				`🔄 Subnet ${subnetIndex} in workflow ${workflowId} changed: ${
 					hasChanged ? "Yes" : "No"
@@ -180,6 +198,7 @@ export const useSubnetCacheStore = create<SubnetCacheStoreState>()(
 					newHash: newContentHash,
 					oldStatus: cached.status,
 					newStatus: newData.status,
+					isWaitingResponseResumption,
 				});
 			}
 

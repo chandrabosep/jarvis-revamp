@@ -236,7 +236,8 @@ export const useWorkflowExecution = ({
 			try {
 				setIsExecuting(true);
 				setPollingStatus(true);
-				setWorkflowStatus("in_progress");
+				// Don't assume in_progress - let the first status update determine the actual state
+				setWorkflowStatus("pending");
 				setCurrentWorkflowId(workflowId);
 
 				workflowExecutor.setCurrentWorkflowId(workflowId);
