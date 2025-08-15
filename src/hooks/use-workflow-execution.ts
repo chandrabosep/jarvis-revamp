@@ -85,7 +85,7 @@ export const useWorkflowExecution = ({
 								id: `user_${Date.now()}`,
 								type: "user",
 								content: data.userPrompt,
-								timestamp: new Date(),
+								timestamp: new Date(0), // Set to epoch time to guarantee it's always first
 							};
 							return [userMessage, ...prevMessages];
 						}
@@ -310,7 +310,7 @@ export const useWorkflowExecution = ({
 					id: `user_${Date.now()}`,
 					type: "user",
 					content: message,
-					timestamp: new Date(),
+					timestamp: new Date(0), // Set to epoch time to guarantee it's always first
 				};
 				setChatMessages([userMessage]);
 

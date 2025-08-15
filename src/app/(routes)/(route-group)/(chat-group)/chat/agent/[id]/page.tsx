@@ -452,19 +452,44 @@ export default function AgentChatPage() {
 					);
 
 					if (originalPayload?.originalRequestPayload?.prompt) {
-						const userMessage: ChatMsg = {
-							id: `user_${Date.now()}`,
-							type: "user",
-							content:
-								originalPayload.originalRequestPayload.prompt,
-							timestamp: new Date(),
-						};
-
 						setChatMessages((prevMessages) => {
-							if (prevMessages.length === 0) {
-								return [userMessage];
+							// Check if user message already exists
+							const hasUserMessage = prevMessages.some(
+								(msg) => msg.type === "user"
+							);
+
+							if (hasUserMessage) {
+								return prevMessages;
 							}
-							return prevMessages;
+
+							// Create user message with very early timestamp to ensure it appears first
+							const userMessage: ChatMsg = {
+								id: `user_${urlWorkflowId}`,
+								type: "user",
+								content:
+									originalPayload.originalRequestPayload
+										.prompt,
+								timestamp: new Date(0), // Set to epoch time (1970) to guarantee it's always first
+							};
+
+							// Add user message at the beginning and sort by timestamp
+							const allMessages = [
+								userMessage,
+								...prevMessages,
+							].sort((a, b) => {
+								const timeA = a.timestamp
+									? new Date(a.timestamp).getTime()
+									: 0;
+								const timeB = b.timestamp
+									? new Date(b.timestamp).getTime()
+									: 0;
+								return timeA - timeB;
+							});
+
+							console.log(
+								`📝 Added user prompt to beginning of workflow ${urlWorkflowId}`
+							);
+							return allMessages;
 						});
 					}
 				} catch (error) {
@@ -695,32 +720,68 @@ export default function AgentChatPage() {
 						className="overflow-y-auto scrollbar-hide h-[calc(100vh-10rem)] flex flex-col gap-4"
 						onScroll={handleScroll}
 					>
-						{chatMessages.map((message, index) => (
-							<ChatMessage
-								key={`${urlWorkflowId}-${message.id}`}
-								message={message}
-								isLast={index === chatMessages.length - 1}
-								onNotificationYes={handleNotificationYes}
-								onNotificationNo={handleNotificationNo}
-								isPendingNotification={pendingNotifications.some(
-									(n) => n.id === message.id
-								)}
-								onFeedbackSubmit={handleFeedbackSubmit}
-								onFeedbackProceed={handleFeedbackProceed}
-								showFeedbackButtons={
-									!isShowingCachedMessages &&
-									message.type === "question" &&
-									message.questionData?.type === "feedback" &&
-									(message.subnetStatus ===
-										"waiting_response" ||
-										message.subnetStatus === "pending" ||
-										currentWorkflowData?.workflowStatus ===
-											"waiting_response" ||
-										workflowStatus === "waiting_response")
+						{chatMessages
+							.filter((message) => {
+								// Hide question messages for completed/final state workflows (history mode)
+								const isWorkflowCompleted =
+									currentWorkflowData?.workflowStatus ===
+										"completed" ||
+									currentWorkflowData?.workflowStatus ===
+										"failed" ||
+									currentWorkflowData?.workflowStatus ===
+										"stopped" ||
+									workflowStatus === "completed" ||
+									workflowStatus === "failed" ||
+									workflowStatus === "stopped";
+
+								if (
+									isWorkflowCompleted &&
+									message.type === "question"
+								) {
+									return false; // Hide all questions in history mode (feedback, authentication, notification)
 								}
-								workflowStatus={workflowStatus}
-							/>
-						))}
+
+								return true; // Show all other messages
+							})
+							.map((message, index) => (
+								<ChatMessage
+									key={`${urlWorkflowId}-${message.id}`}
+									message={message}
+									isLast={index === chatMessages.length - 1}
+									onNotificationYes={handleNotificationYes}
+									onNotificationNo={handleNotificationNo}
+									isPendingNotification={pendingNotifications.some(
+										(n) => n.id === message.id
+									)}
+									onFeedbackSubmit={handleFeedbackSubmit}
+									onFeedbackProceed={handleFeedbackProceed}
+									showFeedbackButtons={
+										!isShowingCachedMessages &&
+										message.type === "question" &&
+										message.questionData?.type ===
+											"feedback" &&
+										// Don't show feedback buttons for completed/final state workflows
+										currentWorkflowData?.workflowStatus !==
+											"completed" &&
+										currentWorkflowData?.workflowStatus !==
+											"failed" &&
+										currentWorkflowData?.workflowStatus !==
+											"stopped" &&
+										workflowStatus !== "completed" &&
+										workflowStatus !== "failed" &&
+										workflowStatus !== "stopped" &&
+										(message.subnetStatus ===
+											"waiting_response" ||
+											message.subnetStatus ===
+												"pending" ||
+											currentWorkflowData?.workflowStatus ===
+												"waiting_response" ||
+											workflowStatus ===
+												"waiting_response")
+									}
+									workflowStatus={workflowStatus}
+								/>
+							))}
 						<div ref={messagesEndRef} />
 					</div>
 				</div>

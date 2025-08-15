@@ -422,13 +422,19 @@ export const useSubnetCache = () => {
 							// Create question message from feedback history
 							const questionKey = `${feedbackBaseKey}_question`;
 							if (!messageIds.has(questionKey)) {
+								// Question should appear after response - add small offset to created_at
+								const responseTimestamp = new Date(
+									feedbackItem.created_at
+								);
+								const questionTimestamp = new Date(
+									responseTimestamp.getTime() + 1000
+								); // 1 second after response
+
 								const questionMessage: ChatMsg = {
 									id: `feedback_question_${index}_${feedbackIndex}_${Date.now()}`,
 									type: "question",
 									content: feedbackItem.feedback_question,
-									timestamp: new Date(
-										feedbackItem.created_at
-									),
+									timestamp: questionTimestamp,
 									toolName: subnet.toolName,
 									subnetIndex: index,
 									questionData: {
@@ -486,11 +492,20 @@ export const useSubnetCache = () => {
 						if (isNewQuestion) {
 							const currentQuestionKey = `current_question_${workflowId}_${index}`;
 							if (!messageIds.has(currentQuestionKey)) {
+								// Use subnet's updatedAt if available for proper chronological ordering
+								const baseTimestamp = subnet.updatedAt
+									? new Date(subnet.updatedAt)
+									: new Date();
+								// Question should appear after any data from the same subnet
+								const questionTimestamp = new Date(
+									baseTimestamp.getTime() + 1000
+								);
+
 								const currentQuestionMessage: ChatMsg = {
 									id: `current_question_${index}_${Date.now()}`,
 									type: "question",
 									content: subnet.question.text,
-									timestamp: new Date(Date.now() + 200), // Ensure question appears after data messages
+									timestamp: questionTimestamp,
 									subnetStatus: subnet.status,
 									toolName: subnet.toolName,
 									subnetIndex: index,
@@ -664,11 +679,16 @@ export const useSubnetCache = () => {
 
 						// Only add message if we have meaningful content
 						if (content && content.length > 10) {
+							// Use subnet's updatedAt if available, otherwise fall back to current time
+							const baseTimestamp = subnet.updatedAt
+								? new Date(subnet.updatedAt)
+								: new Date();
+
 							const dataMessage = {
 								id: `subnet_${index}_data_${Date.now()}`,
 								type: "workflow_subnet" as const,
 								content,
-								timestamp: new Date(Date.now() - 50), // Ensure data message appears before question
+								timestamp: baseTimestamp, // Use actual subnet update time
 								subnetStatus: "done" as const, // Show as completed since it has data
 								toolName: subnet.toolName,
 								subnetIndex: index,
@@ -685,11 +705,16 @@ export const useSubnetCache = () => {
 								subnet.data
 							);
 							if (questionData) {
+								// Question should appear after data - add offset to base timestamp
+								const questionTimestamp = new Date(
+									baseTimestamp.getTime() + 1000
+								);
+
 								const questionMessage = {
 									id: `subnet_${index}_question_${Date.now()}`,
 									type: "question" as const,
 									content: questionData.text,
-									timestamp: new Date(Date.now() + 100), // Ensure question appears after data messages
+									timestamp: questionTimestamp, // Use base timestamp + offset
 									subnetStatus: "waiting_response" as const,
 									toolName: subnet.toolName,
 									subnetIndex: index,
@@ -772,11 +797,16 @@ export const useSubnetCache = () => {
 
 						// If we have both data and question, prioritize showing data first
 						if (content || result.imageData) {
+							// Use subnet's updatedAt if available, otherwise fall back to current time
+							const baseTimestamp = subnet.updatedAt
+								? new Date(subnet.updatedAt)
+								: new Date();
+
 							const dataMessage = {
 								id: `subnet_${index}_data_${Date.now()}`,
 								type: "workflow_subnet" as const,
 								content: content || "Data received",
-								timestamp: new Date(Date.now() - 50), // Ensure data message appears before question
+								timestamp: baseTimestamp, // Use actual subnet update time
 								subnetStatus: "done" as const,
 								toolName: subnet.toolName,
 								subnetIndex: index,
@@ -794,14 +824,10 @@ export const useSubnetCache = () => {
 								subnet.data
 							);
 							if (questionData) {
-								// Ensure question messages get a later timestamp to appear at the bottom
-								// If question is arriving later, give it an even more recent timestamp
-								const timestampOffset = isQuestionArrivingLater
-									? 1000
-									: 100;
+								// Question should appear after data - add a small offset to the base timestamp
 								const questionTimestamp = new Date(
-									Date.now() + timestampOffset
-								);
+									baseTimestamp.getTime() + 1000
+								); // 1 second after data
 
 								const questionMessage = {
 									id: `subnet_${index}_question_${Date.now()}`,
@@ -897,12 +923,17 @@ export const useSubnetCache = () => {
 
 						// Always show data content if available
 						if (hasDataContent) {
+							// Use subnet's updatedAt if available, otherwise fall back to current time
+							const baseTimestamp = subnet.updatedAt
+								? new Date(subnet.updatedAt)
+								: new Date();
+
 							console.log(
 								`✨ Adding data message for subnet ${index}:`,
 								{
 									contentPreview: content?.slice(0, 50),
 									hasImageData: !!result.imageData,
-									timestamp: new Date(Date.now() - 50),
+									timestamp: baseTimestamp,
 								}
 							);
 
@@ -910,7 +941,7 @@ export const useSubnetCache = () => {
 								id: `subnet_${index}_data_${Date.now()}`,
 								type: "workflow_subnet" as const,
 								content: content || "Data received",
-								timestamp: new Date(Date.now() - 50), // Ensure data message appears before question
+								timestamp: baseTimestamp, // Use actual subnet update time
 								subnetStatus: "done" as const,
 								toolName: subnet.toolName,
 								subnetIndex: index,
@@ -954,13 +985,13 @@ export const useSubnetCache = () => {
 						);
 
 						if (finalQuestionData) {
-							// Ensure question messages get a later timestamp to appear at the bottom
-							// If question is arriving later, give it an even more recent timestamp
-							const timestampOffset = isQuestionArrivingLater
-								? 1000
-								: 100;
+							// Use subnet's updatedAt if available for proper chronological ordering
+							const baseTimestamp = subnet.updatedAt
+								? new Date(subnet.updatedAt)
+								: new Date();
+							// Question should appear after any data from the same subnet
 							const questionTimestamp = new Date(
-								Date.now() + timestampOffset
+								baseTimestamp.getTime() + 1000
 							);
 
 							const questionMessage = {
