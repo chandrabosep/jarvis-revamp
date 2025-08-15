@@ -537,10 +537,7 @@ export function ChatMessage({
 											</Button>
 											<Button
 												onClick={() => {
-													// Hide the feedback buttons immediately when clicked
-													setHideFeedbackButtons(
-														true
-													);
+													// Don't hide feedback buttons, just show input
 													setShowFeedbackInput(true);
 												}}
 												variant="outline"
@@ -566,11 +563,6 @@ export function ChatMessage({
 												/>
 												<Button
 													onClick={async () => {
-														// Hide the feedback input immediately when submitted
-														setHideFeedbackButtons(
-															true
-														);
-
 														if (
 															onFeedbackSubmit &&
 															message.questionData
@@ -587,6 +579,10 @@ export function ChatMessage({
 															setFeedbackText("");
 															setShowFeedbackInput(
 																false
+															);
+															// Hide the feedback buttons after successful submission
+															setHideFeedbackButtons(
+																true
 															);
 														}
 													}}
