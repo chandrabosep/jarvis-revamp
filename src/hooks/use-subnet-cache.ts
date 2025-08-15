@@ -79,7 +79,8 @@ export const useSubnetCache = () => {
 
 			const { statusMap, feedbackSet, processingMap, messageIds } =
 				getWorkflowMaps(workflowId);
-			const messages: ChatMsg[] = [];
+			const dataMessages: ChatMsg[] = [];
+			const questionMessages: ChatMsg[] = [];
 
 			subnetData.forEach((subnet: any, index: number) => {
 				const prevStatus = statusMap.get(index);
@@ -142,6 +143,13 @@ export const useSubnetCache = () => {
 					currentStatus === "waiting_response" &&
 					subnet.data;
 
+				// Detect when a question arrives later (after data was already processed)
+				const isQuestionArrivingLater =
+					prevStatus === "waiting_response" &&
+					currentStatus === "waiting_response" &&
+					subnet.question &&
+					!subnet.data; // Question only, no new data
+
 				if (isRegenerating) {
 					console.log(
 						`🔄 Subnet ${index} is regenerating after feedback`
@@ -153,6 +161,11 @@ export const useSubnetCache = () => {
 				if (isResumingWorkflow) {
 					console.log(
 						`🔄 Subnet ${index} is resuming workflow in waiting_response state`
+					);
+				}
+				if (isQuestionArrivingLater) {
+					console.log(
+						`❓ Subnet ${index} has a question arriving later - will ensure it appears at bottom`
 					);
 				}
 
@@ -189,7 +202,8 @@ export const useSubnetCache = () => {
 							prevStatus) || // Has data and waiting for response (but not on resume)
 						(subnet.status === "pending" && hasSubstantialData) || // Pending with real data
 						(prevStatus === "in_progress" &&
-							subnet.status !== "in_progress")); // Transition away from processing
+							subnet.status !== "in_progress") || // Transition away from processing
+						isQuestionArrivingLater); // Question arriving later should always generate message
 
 				if (shouldGenerateMessage) {
 					console.log(
@@ -197,35 +211,24 @@ export const useSubnetCache = () => {
 					);
 
 					// Create messages for data and questions separately when both exist
-					const subnetMessages = createSubnetMessages(
-						workflowId,
-						index,
-						subnet,
-						{
-							isRegenerating,
-							isShowingQuestion,
-							hasFeedback: feedbackSet.has(index),
-							isProcessingAfterFeedback:
-								processingMap.get(index) || false,
-						}
-					);
+					const {
+						dataMessages: subnetDataMessages,
+						questionMessages: subnetQuestionMessages,
+					} = createSubnetMessages(workflowId, index, subnet, {
+						isRegenerating,
+						isShowingQuestion,
+						hasFeedback: feedbackSet.has(index),
+						isProcessingAfterFeedback:
+							processingMap.get(index) || false,
+						isQuestionArrivingLater,
+					});
 
-					subnetMessages.forEach((message) => {
+					// Process data messages
+					subnetDataMessages.forEach((message) => {
 						if (message) {
 							// Check if this message has already been generated
-							// Use message type and content for better deduplication
 							let messageKey;
-							if (message.type === "question") {
-								// For questions, include question text and type for uniqueness
-								const questionData =
-									message.questionData || subnet.question;
-								messageKey = `${workflowId}_${index}_question_${
-									questionData?.type
-								}_${message.content?.slice(0, 50)}`;
-							} else if (
-								subnet.status === "pending" &&
-								subnet.data
-							) {
+							if (subnet.status === "pending" && subnet.data) {
 								messageKey = `${workflowId}_${index}_pending_with_data_${JSON.stringify(
 									subnet.data
 								).slice(0, 100)}`;
@@ -237,13 +240,7 @@ export const useSubnetCache = () => {
 								const dataHash = subnet.data
 									? JSON.stringify(subnet.data).slice(0, 100)
 									: "no-data";
-								const questionHash = subnet.question
-									? JSON.stringify(subnet.question).slice(
-											0,
-											100
-									  )
-									: "no-question";
-								messageKey = `${workflowId}_${index}_waiting_response_${dataHash}_${questionHash}`;
+								messageKey = `${workflowId}_${index}_waiting_response_data_${dataHash}`;
 							} else {
 								messageKey = `${workflowId}_${index}_${
 									message.type
@@ -258,15 +255,15 @@ export const useSubnetCache = () => {
 							}
 
 							console.log(
-								`🔑 Message key for subnet ${index}:`,
+								`🔑 Data message key for subnet ${index}:`,
 								messageKey
 							);
 
 							if (!messageIds.has(messageKey)) {
-								messages.push(message);
+								dataMessages.push(message);
 								messageIds.add(messageKey);
 								console.log(
-									`✅ Message generated for subnet ${index}:`,
+									`✅ Data message generated for subnet ${index}:`,
 									message.type,
 									`Content: "${message.content?.slice(
 										0,
@@ -276,17 +273,47 @@ export const useSubnetCache = () => {
 								);
 							} else {
 								console.log(
-									`⏭️ Skipping duplicate message for subnet ${index}:`,
+									`⏭️ Skipping duplicate data message for subnet ${index}:`,
 									message.type,
 									`Status: ${message.subnetStatus || "N/A"}`
 								);
 							}
-						} else {
+						}
+					});
+
+					// Process question messages
+					subnetQuestionMessages.forEach((message) => {
+						if (message) {
+							// Check if this question message has already been generated
+							let messageKey;
+							const questionData =
+								message.questionData || subnet.question;
+							messageKey = `${workflowId}_${index}_question_${
+								questionData?.type
+							}_${message.content?.slice(0, 50)}`;
+
 							console.log(
-								`⚠️ No message generated for subnet ${index} - status: ${
-									subnet.status
-								}, hasData: ${!!subnet.data}`
+								`🔑 Question message key for subnet ${index}:`,
+								messageKey
 							);
+
+							if (!messageIds.has(messageKey)) {
+								questionMessages.push(message);
+								messageIds.add(messageKey);
+								console.log(
+									`✅ Question message generated for subnet ${index}:`,
+									message.type,
+									`Content: "${message.content?.slice(
+										0,
+										50
+									)}..."`
+								);
+							} else {
+								console.log(
+									`⏭️ Skipping duplicate question message for subnet ${index}:`,
+									message.type
+								);
+							}
 						}
 					});
 
@@ -307,7 +334,7 @@ export const useSubnetCache = () => {
 							const notificationMessage =
 								createNotificationMessage(subnet, index);
 							if (notificationMessage) {
-								messages.push(notificationMessage);
+								dataMessages.push(notificationMessage);
 								messageIds.add(notificationKey);
 								console.log(
 									`🔔 Notification message generated for subnet ${index}`
@@ -335,27 +362,30 @@ export const useSubnetCache = () => {
 				}
 			});
 
+			// Combine data messages and question messages, with questions at the end
+			const allMessages = [...dataMessages, ...questionMessages];
+
 			console.log(
-				`📝 Generated ${messages.length} messages for workflow ${workflowId}`
+				`📝 Generated ${allMessages.length} messages for workflow ${workflowId} (${dataMessages.length} data, ${questionMessages.length} questions)`
 			);
 			console.log(
 				`🔍 Message deduplication: ${messageIds.size} unique message keys tracked`
 			);
 			console.log(
 				`🔍 Final messages:`,
-				messages.map((msg) => ({
+				allMessages.map((msg) => ({
 					type: msg.type,
 					content: msg.content?.slice(0, 50),
 					subnetStatus: msg.subnetStatus,
 					toolName: msg.toolName,
 				}))
 			);
-			return messages;
+			return allMessages;
 		},
 		[cacheSubnetData, hasSubnetChanged, getWorkflowMaps]
 	);
 
-	// Create subnet message based on status
+	// Create subnet message based on status - returns separate data and question messages
 	const createSubnetMessages = useCallback(
 		(
 			workflowId: string,
@@ -366,16 +396,19 @@ export const useSubnetCache = () => {
 				isShowingQuestion: boolean;
 				hasFeedback: boolean;
 				isProcessingAfterFeedback: boolean;
+				isQuestionArrivingLater: boolean;
 			}
-		): ChatMsg[] => {
+		): { dataMessages: ChatMsg[]; questionMessages: ChatMsg[] } => {
 			const {
 				isRegenerating,
 				isShowingQuestion,
 				hasFeedback,
 				isProcessingAfterFeedback,
+				isQuestionArrivingLater,
 			} = options;
 			const sourceId = `subnet_${index}_${subnet.status}`;
-			const messages: ChatMsg[] = [];
+			const dataMessages: ChatMsg[] = [];
+			const questionMessages: ChatMsg[] = [];
 
 			// Helper function to extract question data from subnet
 			const extractQuestionData = (subnetData: string) => {
@@ -469,7 +502,7 @@ export const useSubnetCache = () => {
 								sourceId: `${sourceId}_data`,
 								contentHash: createContentHash(result),
 							};
-							messages.push(dataMessage);
+							dataMessages.push(dataMessage);
 
 							// Check for questions in the data
 							const questionData = extractQuestionData(
@@ -487,7 +520,7 @@ export const useSubnetCache = () => {
 									questionData: questionData,
 									sourceId: `${sourceId}_question`,
 								};
-								messages.push(questionMessage);
+								questionMessages.push(questionMessage);
 							}
 						}
 					}
@@ -495,7 +528,7 @@ export const useSubnetCache = () => {
 
 				case "in_progress":
 					if (isProcessingAfterFeedback) {
-						messages.push({
+						dataMessages.push({
 							id: `subnet_${index}_processing_after_feedback_${Date.now()}`,
 							type: "workflow_subnet",
 							content: "Processing with your feedback...",
@@ -507,7 +540,7 @@ export const useSubnetCache = () => {
 							isRegenerated: true,
 						});
 					} else {
-						messages.push({
+						dataMessages.push({
 							id: `subnet_${index}_processing_${Date.now()}`,
 							type: "workflow_subnet",
 							content: `Processing with ${
@@ -578,25 +611,34 @@ export const useSubnetCache = () => {
 								isRegenerated: isRegenerating,
 								contentHash,
 							};
-							messages.push(dataMessage);
+							dataMessages.push(dataMessage);
 
 							// Check for questions in the data and add them as separate messages
 							const questionData = extractQuestionData(
 								subnet.data
 							);
 							if (questionData) {
+								// Ensure question messages get a later timestamp to appear at the bottom
+								// If question is arriving later, give it an even more recent timestamp
+								const timestampOffset = isQuestionArrivingLater
+									? 1000
+									: 100;
+								const questionTimestamp = new Date(
+									Date.now() + timestampOffset
+								);
+
 								const questionMessage = {
 									id: `subnet_${index}_question_${Date.now()}`,
 									type: "question" as const,
 									content: questionData.text,
-									timestamp: new Date(),
+									timestamp: questionTimestamp,
 									subnetStatus: "waiting_response" as const,
 									toolName: subnet.toolName,
 									subnetIndex: index,
 									questionData: questionData,
 									sourceId: `${sourceId}_question`,
 								};
-								messages.push(questionMessage);
+								questionMessages.push(questionMessage);
 							}
 						}
 					}
@@ -701,7 +743,7 @@ export const useSubnetCache = () => {
 								sourceId: `${sourceId}_data`,
 								contentHash: createContentHash(result),
 							};
-							messages.push(dataMessage);
+							dataMessages.push(dataMessage);
 						}
 					}
 
@@ -731,24 +773,33 @@ export const useSubnetCache = () => {
 						);
 
 						if (finalQuestionData) {
+							// Ensure question messages get a later timestamp to appear at the bottom
+							// If question is arriving later, give it an even more recent timestamp
+							const timestampOffset = isQuestionArrivingLater
+								? 1000
+								: 100;
+							const questionTimestamp = new Date(
+								Date.now() + timestampOffset
+							);
+
 							const questionMessage = {
 								id: `subnet_${index}_question_${Date.now()}`,
 								type: "question" as const,
 								content: finalQuestionData.text,
-								timestamp: new Date(),
+								timestamp: questionTimestamp,
 								subnetStatus: "waiting_response" as const,
 								toolName: subnet.toolName,
 								subnetIndex: index,
 								questionData: finalQuestionData,
 								sourceId: `${sourceId}_question`,
 							};
-							messages.push(questionMessage);
+							questionMessages.push(questionMessage);
 						}
 					}
 
 					// If we have neither data nor question, show waiting message
 					if (!hasDataContent && !hasDirectQuestion) {
-						messages.push({
+						dataMessages.push({
 							id: `subnet_${index}_waiting_${Date.now()}`,
 							type: "workflow_subnet",
 							content: `Waiting for your response...`,
@@ -762,7 +813,7 @@ export const useSubnetCache = () => {
 					break;
 
 				case "failed":
-					messages.push({
+					dataMessages.push({
 						id: `subnet_${index}_failed_${Date.now()}`,
 						type: "workflow_subnet",
 						content: "Failed to process",
@@ -778,7 +829,7 @@ export const useSubnetCache = () => {
 					break;
 			}
 
-			return messages;
+			return { dataMessages, questionMessages };
 		},
 		[parseAgentResponse, createContentHash]
 	);

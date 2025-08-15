@@ -289,7 +289,16 @@ export const useChatMessages = () => {
 				const finalMessages = [
 					...filteredMessages,
 					...uniqueNewMessages,
-				];
+				].sort((a, b) => {
+					// Sort messages by timestamp to ensure proper ordering
+					const timeA = a.timestamp
+						? new Date(a.timestamp).getTime()
+						: 0;
+					const timeB = b.timestamp
+						? new Date(b.timestamp).getTime()
+						: 0;
+					return timeA - timeB;
+				});
 
 				if (finalMessages.length === 0 && prevMessages.length > 0) {
 					console.warn(
