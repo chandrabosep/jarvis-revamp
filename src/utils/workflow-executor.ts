@@ -178,8 +178,11 @@ export class WorkflowExecutor {
 				{ headers }
 			);
 
-			// Stop polling
+			// Stop polling immediately and completely
 			this.stopPolling();
+
+			// Clear the status callback to prevent any further updates
+			this.currentStatusCallback = null;
 
 			console.log("✅ Workflow emergency stopped successfully");
 			return true;
@@ -256,14 +259,20 @@ export class WorkflowExecutor {
 			);
 			clearInterval(this.currentPollingInterval);
 			this.currentPollingInterval = null;
+		} else {
+			console.log(
+				`⚠️ No active polling to stop for workflow: ${this.currentWorkflowId}`
+			);
 		}
 
 		// Always clear the callback to prevent stale callbacks from being called
+		// Note: We may want to keep the callback for resume scenarios
 		if (this.currentStatusCallback) {
 			console.log(
 				`🧹 Clearing status callback for workflow: ${this.currentWorkflowId}`
 			);
-			this.currentStatusCallback = null;
+			// Don't clear callback if workflow is just stopped (not completed/failed)
+			// this.currentStatusCallback = null;
 		}
 	}
 
@@ -283,7 +292,11 @@ export class WorkflowExecutor {
 		console.log(`✅ Workflow state cleared completely`);
 	}
 
-	public startContinuousPolling(workflowId: string, apiKey: string): void {
+	public startContinuousPolling(
+		workflowId: string,
+		apiKey: string,
+		pollInterval: number = 2000
+	): void {
 		if (this.currentWorkflowId !== workflowId) {
 			console.warn(
 				`⚠️ Cannot start continuous polling for different workflow: ${workflowId}`
@@ -291,8 +304,17 @@ export class WorkflowExecutor {
 			return;
 		}
 
+		// Ensure no duplicate intervals
+		if (this.currentPollingInterval) {
+			console.warn(
+				`⚠️ Polling already active for workflow: ${workflowId}, clearing old interval`
+			);
+			clearInterval(this.currentPollingInterval);
+			this.currentPollingInterval = null;
+		}
+
 		console.log(
-			`🔄 Manually starting continuous polling for workflow: ${workflowId}`
+			`🔄 Manually starting continuous polling for workflow: ${workflowId} (interval: ${pollInterval}ms)`
 		);
 		this.currentPollingInterval = setInterval(async () => {
 			try {
@@ -315,6 +337,21 @@ export class WorkflowExecutor {
 					`📊 Workflow ${workflowId} status: ${statusData.workflowStatus} - Continuous polling...`
 				);
 
+				// Check if any subnet needs non-authentication feedback
+				const hasNonAuthFeedback = statusData.subnets?.some(
+					(subnet: any) =>
+						subnet.status === "waiting_response" &&
+						subnet.question &&
+						subnet.question.type !== "authentication"
+				);
+
+				// Check if any subnet needs authentication
+				const hasAuthenticationPending = statusData.subnets?.some(
+					(subnet: any) =>
+						subnet.status === "waiting_response" &&
+						subnet.question?.type === "authentication"
+				);
+
 				const isTerminalState =
 					statusData.workflowStatus === "completed" ||
 					statusData.workflowStatus === "failed";
@@ -326,13 +363,35 @@ export class WorkflowExecutor {
 					this.stopPolling();
 					this.currentWorkflowId = null;
 					this.currentStatusCallback = null;
-				}
-
-				if (statusData.workflowStatus === "stopped") {
+				} else if (statusData.workflowStatus === "stopped") {
 					console.log(
-						`⏸️ Workflow ${workflowId} stopped, keeping ID for resume`
+						`⏸️ Workflow ${workflowId} stopped, stopping all polling immediately`
+					);
+					// Clear the interval immediately
+					if (this.currentPollingInterval) {
+						clearInterval(this.currentPollingInterval);
+						this.currentPollingInterval = null;
+					}
+					// Don't set callback to null to allow resume, but ensure polling is stopped
+					return; // Exit the interval function
+				} else if (
+					statusData.workflowStatus === "waiting_response" &&
+					hasNonAuthFeedback
+				) {
+					console.log(
+						`⏸️ Workflow ${workflowId} waiting for user feedback (non-auth), stopping polling temporarily`
 					);
 					this.stopPolling();
+					// Keep workflow ID and callback for resuming after feedback
+				} else if (
+					statusData.workflowStatus === "waiting_response" &&
+					hasAuthenticationPending
+				) {
+					console.log(
+						`🔐 Workflow ${workflowId} waiting for authentication, continuing polling at 10s intervals...`
+					);
+					// For authentication, we might want to adjust the polling interval
+					// But we continue polling
 				}
 			} catch (error) {
 				console.error(
@@ -350,7 +409,7 @@ export class WorkflowExecutor {
 					this.currentStatusCallback = null;
 				}
 			}
-		}, 2000);
+		}, pollInterval);
 	}
 
 	/**
@@ -595,13 +654,15 @@ export class WorkflowExecutor {
 		onStatusUpdate?: (data: WorkflowExecutionResponse) => void
 	): void {
 		console.log(`🔄 Starting polling for workflow: ${requestId}`);
+
+		// Always stop any existing polling before starting new one
+		this.stopPolling();
+
 		this.currentWorkflowId = requestId;
 
 		if (onStatusUpdate) {
 			this.currentStatusCallback = onStatusUpdate;
 		}
-
-		this.stopPolling();
 
 		let shouldContinuePolling = false;
 		let pollCount = 0;
@@ -646,15 +707,44 @@ export class WorkflowExecutor {
 
 				const isActiveState =
 					statusData.workflowStatus === "in_progress" ||
+					statusData.workflowStatus === "pending" ||
 					statusData.workflowStatus === "awaiting_response" ||
 					statusData.workflowStatus === "waiting_response";
+
+				// Check if any subnet needs authentication (special case for continuous polling)
+				const hasAuthenticationPending = statusData.subnets?.some(
+					(subnet: any) =>
+						subnet.status === "waiting_response" &&
+						subnet.question?.type === "authentication"
+				);
 
 				if (isActiveState) {
 					console.log(
 						`🔄 Workflow ${requestId} is active (${statusData.workflowStatus}), starting continuous polling...`
 					);
 					shouldContinuePolling = true;
-					startContinuousPolling();
+
+					// For authentication questions, poll every 10 seconds instead of 2 seconds
+					if (hasAuthenticationPending) {
+						startContinuousPolling(10000);
+					} else {
+						startContinuousPolling(2000);
+					}
+				} else if (statusData.workflowStatus === "stopped") {
+					console.log(
+						`⏸️ Workflow ${requestId} is stopped, stopping all polling`
+					);
+					this.stopPolling();
+					// Keep the workflow ID for potential resume but ensure no more polling
+					shouldContinuePolling = false;
+					return; // Exit immediately
+				} else if (statusData.workflowStatus === "completed") {
+					console.log(
+						`🏁 Workflow ${requestId} completed successfully`
+					);
+					this.stopPolling();
+					this.currentWorkflowId = null;
+					this.currentStatusCallback = null;
 				} else {
 					console.log(
 						`🏁 Workflow ${requestId} is not active (${statusData.workflowStatus}), stopping polling`
@@ -674,9 +764,18 @@ export class WorkflowExecutor {
 			}
 		};
 
-		const startContinuousPolling = () => {
+		const startContinuousPolling = (pollInterval: number = 2000) => {
+			// Ensure no duplicate intervals
+			if (this.currentPollingInterval) {
+				console.warn(
+					`⚠️ Polling already active for workflow: ${requestId}, clearing old interval`
+				);
+				clearInterval(this.currentPollingInterval);
+				this.currentPollingInterval = null;
+			}
+
 			console.log(
-				`🔄 Starting continuous polling for workflow: ${requestId}`
+				`🔄 Starting continuous polling for workflow: ${requestId} (interval: ${pollInterval}ms)`
 			);
 			this.currentPollingInterval = setInterval(async () => {
 				// Check if the workflow ID has changed
@@ -684,7 +783,8 @@ export class WorkflowExecutor {
 					console.log(
 						`⚠️ Workflow ID changed during continuous polling: ${requestId} -> ${this.currentWorkflowId}, stopping polling`
 					);
-					this.stopPolling();
+					clearInterval(this.currentPollingInterval!);
+					this.currentPollingInterval = null;
 					return;
 				}
 
@@ -721,6 +821,21 @@ export class WorkflowExecutor {
 						`📊 Workflow ${requestId} status: ${statusData.workflowStatus} - Polling continues...`
 					);
 
+					// Check if any subnet needs non-authentication feedback
+					const hasNonAuthFeedback = statusData.subnets?.some(
+						(subnet: any) =>
+							subnet.status === "waiting_response" &&
+							subnet.question &&
+							subnet.question.type !== "authentication"
+					);
+
+					// Check if any subnet needs authentication
+					const hasAuthenticationPending = statusData.subnets?.some(
+						(subnet: any) =>
+							subnet.status === "waiting_response" &&
+							subnet.question?.type === "authentication"
+					);
+
 					const isTerminalState =
 						statusData.workflowStatus === "completed" ||
 						statusData.workflowStatus === "failed";
@@ -732,13 +847,34 @@ export class WorkflowExecutor {
 						this.stopPolling();
 						this.currentWorkflowId = null;
 						this.currentStatusCallback = null;
-					}
-
-					if (statusData.workflowStatus === "stopped") {
+					} else if (statusData.workflowStatus === "stopped") {
 						console.log(
-							`⏸️ Workflow ${requestId} stopped, keeping ID for resume`
+							`⏸️ Workflow ${requestId} stopped, stopping all polling immediately`
+						);
+						// Clear the interval immediately
+						if (this.currentPollingInterval) {
+							clearInterval(this.currentPollingInterval);
+							this.currentPollingInterval = null;
+						}
+						// Ensure no further polling
+						return;
+					} else if (
+						statusData.workflowStatus === "waiting_response" &&
+						hasNonAuthFeedback
+					) {
+						console.log(
+							`⏸️ Workflow ${requestId} waiting for user feedback (non-auth), stopping polling temporarily`
 						);
 						this.stopPolling();
+						// Keep workflow ID and callback for resuming after feedback
+					} else if (
+						statusData.workflowStatus === "waiting_response" &&
+						hasAuthenticationPending
+					) {
+						console.log(
+							`🔐 Workflow ${requestId} waiting for authentication, continuing polling...`
+						);
+						// Continue polling for authentication
 					}
 				} catch (error) {
 					console.error(
@@ -756,7 +892,7 @@ export class WorkflowExecutor {
 						this.currentStatusCallback = null;
 					}
 				}
-			}, 2000);
+			}, pollInterval);
 		};
 
 		pollOnce();

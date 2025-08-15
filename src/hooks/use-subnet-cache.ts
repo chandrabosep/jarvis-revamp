@@ -567,13 +567,32 @@ export const useSubnetCache = () => {
 					break;
 
 				case "waiting_response":
+					// For waiting_response, we need to check both the data field and the direct question field
+					console.log(
+						`🔍 Processing waiting_response subnet ${index}:`,
+						{
+							hasData: !!subnet.data,
+							hasQuestion: !!subnet.question,
+							dataPreview: subnet.data
+								? JSON.stringify(subnet.data).slice(0, 100)
+								: "no-data",
+							questionText:
+								subnet.question?.text?.slice(0, 50) ||
+								"no-question",
+						}
+					);
+
+					let content = "";
+					let hasDataContent = false;
+					let hasDirectQuestion = false;
+					let questionData = null;
+
+					// First, handle data content if it exists
 					if (subnet.data) {
 						const result = parseAgentResponse(subnet.data);
-						let content = result.content || "";
-						let hasQuestion = false;
-						let questionData = null;
+						content = result.content || "";
 
-						// Handle special data formats and extract questions
+						// Handle special data formats
 						try {
 							const parsedData = JSON.parse(subnet.data);
 
@@ -589,12 +608,12 @@ export const useSubnetCache = () => {
 								content = parsedData.message;
 							}
 
-							// Check for questions in the data
+							// Check for questions embedded in the data
 							if (
 								parsedData.question ||
 								(parsedData.data && parsedData.data.question)
 							) {
-								hasQuestion = true;
+								hasDataContent = true;
 								const questionText =
 									parsedData.question ||
 									parsedData.data.question;
@@ -620,43 +639,18 @@ export const useSubnetCache = () => {
 							// Use default content
 						}
 
-						// For waiting_response, prioritize questions over data
-						// If there's a question, show the question first, then data
-						if (hasQuestion && questionData) {
-							// Show the question message
-							const questionMessage = {
-								id: `subnet_${index}_question_${Date.now()}`,
-								type: "question" as const,
-								content: questionData.text,
-								timestamp: new Date(),
-								subnetStatus: "waiting_response" as const,
-								toolName: subnet.toolName,
-								subnetIndex: index,
-								questionData: questionData,
-								sourceId: `${sourceId}_question`,
-							};
-							messages.push(questionMessage);
+						hasDataContent = !!(content || result.imageData);
 
-							// Also show data if available (but after the question)
-							if (content || result.imageData) {
-								const dataMessage = {
-									id: `subnet_${index}_data_${Date.now()}`,
-									type: "workflow_subnet" as const,
-									content: content || "Data received",
-									timestamp: new Date(),
-									subnetStatus: "done" as const,
-									toolName: subnet.toolName,
-									subnetIndex: index,
-									imageData: result.imageData,
-									isImage: result.isImage,
-									contentType: result.contentType,
-									sourceId: `${sourceId}_data`,
-									contentHash: createContentHash(result),
-								};
-								messages.push(dataMessage);
-							}
-						} else if (content || result.imageData) {
-							// No question, just show data as completed
+						// Always show data content if available
+						if (hasDataContent) {
+							console.log(
+								`✨ Adding data message for subnet ${index}:`,
+								{
+									contentPreview: content?.slice(0, 50),
+									hasImageData: !!result.imageData,
+								}
+							);
+
 							const dataMessage = {
 								id: `subnet_${index}_data_${Date.now()}`,
 								type: "workflow_subnet" as const,
@@ -673,8 +667,51 @@ export const useSubnetCache = () => {
 							};
 							messages.push(dataMessage);
 						}
-					} else {
-						// No data, just waiting
+					}
+
+					// Check for direct question field (separate from data)
+					if (subnet.question) {
+						hasDirectQuestion = true;
+						// Use the direct question field which is already structured
+						questionData = subnet.question;
+					}
+
+					// Show question if we have one (either from data or direct field)
+					if ((hasDataContent && questionData) || hasDirectQuestion) {
+						const finalQuestionData =
+							subnet.question || questionData;
+
+						console.log(
+							`✨ Adding question message for subnet ${index}:`,
+							{
+								questionText: finalQuestionData?.text?.slice(
+									0,
+									50
+								),
+								questionType: finalQuestionData?.type,
+								hasDataContent,
+								hasDirectQuestion,
+							}
+						);
+
+						if (finalQuestionData) {
+							const questionMessage = {
+								id: `subnet_${index}_question_${Date.now()}`,
+								type: "question" as const,
+								content: finalQuestionData.text,
+								timestamp: new Date(),
+								subnetStatus: "waiting_response" as const,
+								toolName: subnet.toolName,
+								subnetIndex: index,
+								questionData: finalQuestionData,
+								sourceId: `${sourceId}_question`,
+							};
+							messages.push(questionMessage);
+						}
+					}
+
+					// If we have neither data nor question, show waiting message
+					if (!hasDataContent && !hasDirectQuestion) {
 						messages.push({
 							id: `subnet_${index}_waiting_${Date.now()}`,
 							type: "workflow_subnet",

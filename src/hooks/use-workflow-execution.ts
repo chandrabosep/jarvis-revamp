@@ -86,6 +86,20 @@ export const useWorkflowExecution = ({
 				// Note: updateMessagesWithSubnetData is now handled separately in the chat agent page
 				// to prevent mixing messages from different workflows
 
+				// Check if any subnet needs feedback
+				const hasNonAuthFeedback = data.subnets?.some(
+					(subnet: any) =>
+						subnet.status === "waiting_response" &&
+						subnet.question &&
+						subnet.question.type !== "authentication"
+				);
+
+				const hasAuthenticationPending = data.subnets?.some(
+					(subnet: any) =>
+						subnet.status === "waiting_response" &&
+						subnet.question?.type === "authentication"
+				);
+
 				// Handle workflow status changes
 				if (data.workflowStatus === "completed") {
 					setIsExecuting(false);
@@ -140,6 +154,7 @@ export const useWorkflowExecution = ({
 						return prev;
 					});
 				} else if (data.workflowStatus === "stopped") {
+					console.log("🛑 Workflow stopped, halting all operations");
 					setIsExecuting(false);
 					setPollingStatus(false);
 					setWorkflowStatus("stopped");
@@ -150,7 +165,11 @@ export const useWorkflowExecution = ({
 						setCurrentWorkflowId(data.requestId);
 					}
 
+					// Force stop any polling in the executor
 					workflowExecutor.handleExternalStatusChange("stopped");
+					workflowExecutor.forceStopPollingForWorkflow(
+						data.requestId || currentWorkflowId || ""
+					);
 					stopCurrentExecution();
 				} else if (data.workflowStatus === "in_progress") {
 					setIsExecuting(true);
@@ -158,10 +177,32 @@ export const useWorkflowExecution = ({
 					setWorkflowStatus("in_progress");
 					setIsInFeedbackMode(false);
 				} else if (data.workflowStatus === "waiting_response") {
+					// Handle waiting_response differently based on question type
+					if (hasNonAuthFeedback) {
+						// For non-auth feedback, stop polling and wait for user input
+						setIsExecuting(true);
+						setPollingStatus(false); // Stop polling for non-auth feedback
+						setWorkflowStatus("waiting_response");
+						setIsInFeedbackMode(true);
+					} else if (hasAuthenticationPending) {
+						// For authentication, continue polling
+						setIsExecuting(true);
+						setPollingStatus(true); // Continue polling for auth
+						setWorkflowStatus("waiting_response");
+						setIsInFeedbackMode(false); // Auth is handled differently
+					} else {
+						// Default behavior for waiting_response
+						setIsExecuting(true);
+						setPollingStatus(true);
+						setWorkflowStatus("waiting_response");
+						setIsInFeedbackMode(true);
+					}
+				} else if (data.workflowStatus === "pending") {
+					// Handle pending status (initial state)
 					setIsExecuting(true);
 					setPollingStatus(true);
-					setWorkflowStatus("waiting_response");
-					setIsInFeedbackMode(true);
+					setWorkflowStatus("pending");
+					setIsInFeedbackMode(false);
 				}
 			};
 		},

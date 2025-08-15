@@ -602,7 +602,6 @@ export const initializeSkynet = async (
 	return skyBrowser;
 };
 
-
 export const checkUserBalance = async (skyBrowser: SkyMainBrowser | null) => {
 	try {
 		if (!skyBrowser) {

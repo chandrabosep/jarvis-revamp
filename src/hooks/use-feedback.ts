@@ -143,7 +143,10 @@ export const useFeedback = ({
 			// Resume polling to get updated workflow data
 			if (resumePolling) {
 				console.log("🔄 Resuming polling after feedback submission");
-				resumePolling();
+				// Add a small delay to ensure the backend has processed the feedback
+				setTimeout(() => {
+					resumePolling();
+				}, 1000);
 			}
 		} catch (error) {
 			setChatMessages((prev) =>
@@ -231,7 +234,10 @@ export const useFeedback = ({
 			// Resume polling to get updated workflow data
 			if (resumePolling) {
 				console.log("🔄 Resuming polling after feedback submission");
-				resumePolling();
+				// Add a small delay to ensure the backend has processed the feedback
+				setTimeout(() => {
+					resumePolling();
+				}, 1000);
 			}
 		} catch (error) {
 			setChatMessages((prev) =>
@@ -333,7 +339,10 @@ export const useFeedback = ({
 			// Resume polling to get updated workflow data
 			if (resumePolling) {
 				console.log("🔄 Resuming polling after feedback submission");
-				resumePolling();
+				// Add a small delay to ensure the backend has processed the feedback
+				setTimeout(() => {
+					resumePolling();
+				}, 1000);
 			}
 		} catch (error) {
 			setChatMessages((prev) =>

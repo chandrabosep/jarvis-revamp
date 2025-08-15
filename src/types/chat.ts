@@ -40,7 +40,8 @@ export type WorkflowStatus =
 	| "completed"
 	| "failed"
 	| "waiting_response"
-	| "in_progress";
+	| "in_progress"
+	| "pending";
 
 export interface AgentResponse {
 	content: string | null;

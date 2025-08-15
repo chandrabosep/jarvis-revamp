@@ -171,6 +171,16 @@ const ChatSidebar = React.memo(() => {
 
 	const hasWallet = !!address;
 
+	// Check if any workflow in the history is active (processing or waiting_response)
+	const hasActiveWorkflow = (workflows: WorkflowItem[]) => {
+		return workflows.some(
+			(workflow) =>
+				workflow.status === "in_progress" ||
+				workflow.status === "waiting_response" ||
+				workflow.status === "pending"
+		);
+	};
+
 	const { data, refetch, isRefetching, isLoading, error } = useQuery({
 		queryKey: ["history", chatCount, address],
 		queryFn: async () => {
@@ -188,7 +198,23 @@ const ChatSidebar = React.memo(() => {
 			return [];
 		},
 		enabled: !!address && !!skyBrowser,
-		refetchInterval: isRunning ? 10000 : false,
+		// Poll every 1 minute if there's an active workflow or if exactly 5 histories are shown with any active
+		refetchInterval: (query) => {
+			const workflows = query.state.data as WorkflowItem[] | undefined;
+			if (!workflows) return false;
+
+			// Poll if any workflow is active
+			if (hasActiveWorkflow(workflows)) {
+				return 60000; // 1 minute
+			}
+
+			// Also poll if exactly 5 histories are shown and any are active
+			if (chatCount === 5 && hasActiveWorkflow(workflows.slice(0, 5))) {
+				return 60000; // 1 minute
+			}
+
+			return false;
+		},
 		staleTime: 1000 * 60 * 5,
 		gcTime: 1000 * 60 * 30,
 		refetchOnWindowFocus: false,

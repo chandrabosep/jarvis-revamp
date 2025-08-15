@@ -34,7 +34,7 @@ export const API_KEY_CONFIG = {
 	GENERATION_URL:
 		"https://lighthouseservice-c0n1.stackos.io/generate-api-key",
 	STORAGE_KEY: "skynet_api_key",
-	VALIDITY_DURATION: 24 * 60 * 60 * 1000, // 24 hours
+	VALIDITY_DURATION: 90 * 24 * 60 * 60 * 1000, // 3 months (90 days)
 } as const;
 
 // Network Configuration

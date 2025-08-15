@@ -25,7 +25,7 @@ import SearchBar from "./search";
 import AgentCard from "./agent-card";
 
 interface AgentWithOwnership extends Agent {
-	isOwned: boolean;
+	// Removed isOwned property - we'll handle ownership dynamically
 }
 
 interface MarketplaceProps {
@@ -42,61 +42,10 @@ export default function Marketplace({ disabled = false }: MarketplaceProps) {
 	const { setSelectedAgent, selectedAgent, mode } = useGlobalStore();
 	const { skyBrowser, address } = useWallet();
 
-	const [checkingOwnership, setCheckingOwnership] = useState(false);
 	const [selectedAgentNFTId, setSelectedAgentNFTId] = useState<string>("");
 	const [minting, setMinting] = useState<Record<string, boolean>>({});
 
-	const checkAgentNFT = async (agentAddress: string) => {
-		if (!skyBrowser || !address || !agentAddress) return false;
-		setCheckingOwnership(true);
-		try {
-			const ownsNFT = await checkAgentNFTOwnership(
-				agentAddress,
-				address,
-				skyBrowser
-			);
-
-			if (ownsNFT) {
-				const nftIds = await getUserAgentNFTIds(
-					agentAddress,
-					address,
-					skyBrowser
-				);
-
-				if (nftIds.length > 0 && !selectedAgentNFTId) {
-					setSelectedAgentNFTId(nftIds[0]);
-				}
-
-				setAgents((prev) =>
-					prev.map((agent) =>
-						agent.agent_address === agentAddress
-							? { ...agent, isOwned: true }
-							: agent
-					)
-				);
-			} else {
-				setSelectedAgentNFTId("");
-
-				setAgents((prev) =>
-					prev.map((agent) =>
-						agent.agent_address === agentAddress
-							? { ...agent, isOwned: false }
-							: agent
-					)
-				);
-			}
-
-			setMinting((prev) => ({ ...prev, [agentAddress]: false }));
-
-			return ownsNFT;
-		} catch (error) {
-			console.error("Error checking agent NFT ownership:", error);
-			setMinting((prev) => ({ ...prev, [agentAddress]: false }));
-			return false;
-		} finally {
-			setCheckingOwnership(false);
-		}
-	};
+	// Removed ownership checking - we'll handle this when user tries to select
 
 	const handleMintAgentNft = async (agent: AgentWithOwnership) => {
 		if (!agent || !skyBrowser) {
@@ -135,14 +84,7 @@ export default function Marketplace({ disabled = false }: MarketplaceProps) {
 
 					if (newAgentId) {
 						setSelectedAgentNFTId(newAgentId);
-						setAgents((prev) =>
-							prev.map((a) =>
-								a.id === agent.id ? { ...a, isOwned: true } : a
-							)
-						);
 					}
-
-					await checkAgentNFT(agent.agent_address);
 				}
 			} else {
 				toast.error("Failed to mint agent NFT");
@@ -155,11 +97,7 @@ export default function Marketplace({ disabled = false }: MarketplaceProps) {
 		}
 	};
 
-	const checkAgentOwnership = async (
-		agentAddress: string
-	): Promise<boolean> => {
-		return await checkAgentNFT(agentAddress);
-	};
+	// Removed checkAgentOwnership function
 
 	const fetchAgents = useCallback(
 		async (searchValue: string = "") => {
@@ -174,15 +112,12 @@ export default function Marketplace({ disabled = false }: MarketplaceProps) {
 					skyBrowser || undefined,
 					{ address } as any
 				);
-				const agentsWithOwnership = await Promise.all(
-					(data?.data?.agents || []).map(async (agent: Agent) => {
-						const isOwned = await checkAgentOwnership(
-							agent.agent_address
-						);
-						return { ...agent, isOwned };
+				const agents = (data?.data?.agents || []).map(
+					(agent: Agent) => ({
+						...agent,
 					})
 				);
-				setAgents(agentsWithOwnership);
+				setAgents(agents);
 			} catch (e) {
 				console.error("Error fetching agents:", e);
 				setError("Failed to load agents. Please try again.");
@@ -246,9 +181,36 @@ export default function Marketplace({ disabled = false }: MarketplaceProps) {
 		};
 	}, []);
 
-	const handleAgentSelect = (agent: AgentWithOwnership) => {
-		setSelectedAgent(agent);
-		setIsOpen(false);
+	const handleAgentSelect = async (agent: AgentWithOwnership) => {
+		if (!skyBrowser || !address) {
+			toast.error("Please connect your wallet first");
+			return;
+		}
+
+		try {
+			// Check if user owns the agent NFT
+			const ownsNFT = await checkAgentNFTOwnership(
+				agent.agent_address,
+				address,
+				skyBrowser
+			);
+
+			if (ownsNFT) {
+				// User owns the agent, select it directly
+				setSelectedAgent(agent);
+				setIsOpen(false);
+				toast.success(`Selected ${agent.name}`);
+			} else {
+				// User doesn't own the agent, mint it first then select
+				await handleMintAgentNft(agent);
+				// The minting function will handle selection after successful mint
+				setSelectedAgent(agent);
+				setIsOpen(false);
+			}
+		} catch (error) {
+			console.error("Error in handleAgentSelect:", error);
+			toast.error("Failed to select agent. Please try again.");
+		}
 	};
 
 	const handleDialogOpenChange = (open: boolean) => {
@@ -346,7 +308,7 @@ export default function Marketplace({ disabled = false }: MarketplaceProps) {
 												key={agent.id}
 												name={agent.name}
 												description={agent.description}
-												owned={agent.isOwned}
+												owned={false} // Always false - we handle ownership in select logic
 												isSelected={isSelected}
 												onSelect={() =>
 													handleAgentSelect(agent)
@@ -359,9 +321,7 @@ export default function Marketplace({ disabled = false }: MarketplaceProps) {
 														agent.agent_address
 													] || false
 												}
-												checkingOwnership={
-													checkingOwnership
-												}
+												checkingOwnership={false} // Always false since we removed ownership checking
 											/>
 										);
 									})

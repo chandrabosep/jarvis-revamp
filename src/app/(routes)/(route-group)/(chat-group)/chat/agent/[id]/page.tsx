@@ -690,8 +690,7 @@ export default function AgentChatPage() {
 								showFeedbackButtons={
 									!isShowingCachedMessages &&
 									message.type === "question" &&
-									message.questionData?.type !==
-										"authentication" &&
+									message.questionData?.type === "feedback" &&
 									(message.subnetStatus ===
 										"waiting_response" ||
 										message.subnetStatus === "pending" ||
@@ -739,6 +738,8 @@ export default function AgentChatPage() {
 							: currentWorkflowData?.workflowStatus ===
 							  "waiting_response"
 							? "waiting_response"
+							: workflowStatus === "pending"
+							? undefined
 							: workflowStatus
 					}
 				/>

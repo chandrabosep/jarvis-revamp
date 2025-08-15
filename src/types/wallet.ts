@@ -79,4 +79,5 @@ export interface ApiKeyData {
 	userAddress: string;
 	nftId: string;
 	timestamp: number;
+	expiresAt?: number; // Optional for backward compatibility
 }

@@ -139,6 +139,9 @@ export function ChatMessage({
 		showFeedbackButtons,
 		hasQuestionData: !!message.questionData,
 		questionType: message.questionData?.type,
+		isAuthentication: message.questionData?.type === "authentication",
+		isFeedback: message.questionData?.type === "feedback",
+		isNotification: message.questionData?.type === "notification",
 	});
 
 	const shouldHideAuthButton = () =>
@@ -656,13 +659,13 @@ export function ChatMessage({
 						<div className="size-3 rounded-full border-2 border-gray-700 bg-gray-500"></div>
 					</div>
 					<div className="flex-1 min-w-0 p-4 border border-border/50 rounded-lg">
-						<div className="w-fit px-5 py-2 rounded-lg border border-border bg-sidebar/20 text-foreground text-sm leading-relaxed">
-							{isMarkdownContent(message.content) ? (
+						{isMarkdownContent(message.content) ? (
+							<div className="w-fit px-5 py-2 rounded-lg border border-border bg-sidebar/20 text-foreground text-sm leading-relaxed">
 								<MDXRenderer content={message.content} />
-							) : (
-								convertUrlsToLinks(message.content)
-							)}
-						</div>
+							</div>
+						) : (
+							convertUrlsToLinks(message.content)
+						)}
 						{/* <div className="text-xs text-gray-500 mt-2">
 							{message.timestamp.toLocaleTimeString([], {
 								hour: "2-digit",
