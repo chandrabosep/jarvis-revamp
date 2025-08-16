@@ -178,12 +178,15 @@ export default function AgentChatPage() {
 				});
 
 				// Check if this is the first update for an existing workflow
-				const shouldIncludeHistory = isLoadingExistingWorkflow.current;
+				// If we're showing cached messages, don't include history to prevent duplicates
+				const shouldIncludeHistory =
+					isLoadingExistingWorkflow.current &&
+					!isShowingCachedMessages;
 
 				// Reset the flag after first update
 				if (isLoadingExistingWorkflow.current) {
 					console.log(
-						`📋 First update for existing workflow - including history`
+						`📋 First update for existing workflow - including history: ${shouldIncludeHistory} (cached messages: ${isShowingCachedMessages})`
 					);
 					isLoadingExistingWorkflow.current = false;
 				}
@@ -192,7 +195,7 @@ export default function AgentChatPage() {
 					currentWorkflowData,
 					lastQuestionRef,
 					{
-						includeHistory: shouldIncludeHistory, // Include history only on first load of existing workflow
+						includeHistory: shouldIncludeHistory, // Only include history if no cached messages are shown
 						isExistingWorkflow: shouldIncludeHistory,
 					}
 				);
@@ -202,7 +205,7 @@ export default function AgentChatPage() {
 				);
 			}
 		}
-	}, [currentWorkflowData, urlWorkflowId]);
+	}, [currentWorkflowData, urlWorkflowId, isShowingCachedMessages]);
 
 	// Add a cleanup effect that runs when the component unmounts
 	useEffect(() => {

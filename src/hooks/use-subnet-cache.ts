@@ -125,6 +125,20 @@ export const useSubnetCache = () => {
 
 			if (!subnetData || subnetData.length === 0) return [];
 
+			// Check if any subnet has a stopped status - if so, don't process new data to prevent invalid additions
+			const hasStoppedStatus = subnetData.some(
+				(subnet) =>
+					subnet.workflowStatus === "stopped" ||
+					subnet.status === "stopped"
+			);
+
+			if (hasStoppedStatus && !includeHistory) {
+				console.log(
+					`🛑 Workflow ${workflowId} is stopped - skipping new data processing to prevent invalid additions`
+				);
+				return [];
+			}
+
 			const { statusMap, feedbackSet, processingMap, messageIds } =
 				getWorkflowMaps(workflowId);
 			const dataMessages: ChatMsg[] = [];
@@ -253,8 +267,19 @@ export const useSubnetCache = () => {
 				}
 
 				// Original logic preserved - only add duplication check for specific case
+				// For running workflows: prioritize feedback history over subnet data to avoid duplicates
+				const isRunningWorkflow =
+					subnet.status === "in_progress" ||
+					subnet.status === "waiting_response" ||
+					subnet.status === "pending";
+
+				// If feedback history exists and we're including history, skip regular message generation
+				// This prevents duplicate data from being shown (feedback history contains the same data)
+				const shouldSkipDueToFeedbackHistory =
+					hasFeedbackHistory && includeHistory;
+
 				const shouldGenerateMessage =
-					(!hasFeedbackHistory || !includeHistory) && // Skip if feedback history exists AND we're including history
+					!shouldSkipDueToFeedbackHistory && // Primary check: skip if feedback history exists AND we're including history
 					!isResumingWorkflow && // Prevent message generation during workflow resumption
 					((hasChanged && prevStatus) || // Status changed from a previous state
 						(subnet.status === "in_progress" &&
@@ -272,6 +297,7 @@ export const useSubnetCache = () => {
 					`🔍 Message generation check for subnet ${index}:`,
 					{
 						shouldGenerateMessage,
+						shouldSkipDueToFeedbackHistory,
 						hasFeedbackHistory,
 						includeHistory,
 						hasChanged,
@@ -284,10 +310,14 @@ export const useSubnetCache = () => {
 						dataPreview: subnet.data
 							? JSON.stringify(subnet.data).slice(0, 100)
 							: "no-data",
-						skipDueToDuplication:
-							hasFeedbackHistory && includeHistory,
 					}
 				);
+
+				if (shouldSkipDueToFeedbackHistory) {
+					console.log(
+						`⏭️ Skipping regular message generation for subnet ${index} - feedback history exists and will be processed instead`
+					);
+				}
 
 				if (shouldGenerateMessage) {
 					console.log(
@@ -305,6 +335,8 @@ export const useSubnetCache = () => {
 						isProcessingAfterFeedback:
 							processingMap.get(index) || false,
 						isQuestionArrivingLater,
+						hasFeedbackHistory,
+						includeHistory,
 					});
 
 					// Process data messages
@@ -644,6 +676,8 @@ export const useSubnetCache = () => {
 				hasFeedback: boolean;
 				isProcessingAfterFeedback: boolean;
 				isQuestionArrivingLater: boolean;
+				hasFeedbackHistory?: boolean;
+				includeHistory?: boolean;
 			}
 		): { dataMessages: ChatMsg[]; questionMessages: ChatMsg[] } => {
 			const {
@@ -652,6 +686,8 @@ export const useSubnetCache = () => {
 				hasFeedback,
 				isProcessingAfterFeedback,
 				isQuestionArrivingLater,
+				hasFeedbackHistory = false,
+				includeHistory = false,
 			} = options;
 			const sourceId = `subnet_${index}_${subnet.status}`;
 			const dataMessages: ChatMsg[] = [];
@@ -909,6 +945,8 @@ export const useSubnetCache = () => {
 						{
 							hasData: !!subnet.data,
 							hasQuestion: !!subnet.question,
+							hasFeedbackHistory,
+							includeHistory,
 							dataPreview: subnet.data
 								? JSON.stringify(subnet.data).slice(0, 100)
 								: "no-data",
@@ -923,8 +961,19 @@ export const useSubnetCache = () => {
 					let hasDirectQuestion = false;
 					let questionData = null;
 
-					// First, handle data content if it exists
-					if (subnet.data) {
+					// Skip processing subnet.data if feedback history exists and we're including history
+					// This prevents duplicates when opening running workflows from sidebar
+					const shouldSkipSubnetData =
+						hasFeedbackHistory && includeHistory;
+
+					if (shouldSkipSubnetData) {
+						console.log(
+							`⏭️ Skipping subnet.data processing for subnet ${index} - feedback history exists and includeHistory=true`
+						);
+					}
+
+					// First, handle data content if it exists and we should process it
+					if (subnet.data && !shouldSkipSubnetData) {
 						const result = parseAgentResponse(subnet.data);
 						content = result.content || "";
 

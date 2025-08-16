@@ -97,6 +97,32 @@ export const useChatMessages = () => {
 				existingMsgs: ChatMsg[]
 			) => {
 				return existingMsgs.some((existingMsg) => {
+					// Check for duplicates between workflow_subnet and response messages (from feedback history)
+					if (
+						(newMsg.type === "workflow_subnet" &&
+							existingMsg.type === "response") ||
+						(newMsg.type === "response" &&
+							existingMsg.type === "workflow_subnet")
+					) {
+						// If they have the same subnet index and similar content, consider them duplicates
+						if (
+							newMsg.subnetIndex === existingMsg.subnetIndex &&
+							newMsg.content &&
+							existingMsg.content &&
+							(newMsg.content.includes(
+								existingMsg.content.slice(0, 100)
+							) ||
+								existingMsg.content.includes(
+									newMsg.content.slice(0, 100)
+								))
+						) {
+							console.log(
+								`🔍 Detected potential duplicate between ${newMsg.type} and ${existingMsg.type} for subnet ${newMsg.subnetIndex}`
+							);
+							return true;
+						}
+					}
+
 					if (
 						newMsg.type !== "workflow_subnet" ||
 						existingMsg.type !== "workflow_subnet"
