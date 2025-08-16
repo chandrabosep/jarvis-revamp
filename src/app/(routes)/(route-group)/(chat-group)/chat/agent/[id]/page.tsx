@@ -709,10 +709,65 @@ export default function AgentChatPage() {
 		);
 	}
 
+	// Check if we should show skeleton instead of messages
+	const shouldShowSkeleton = () => {
+		// Don't show skeleton if there are no messages at all
+		if (chatMessages.length === 0) {
+			return false;
+		}
+
+		// Only show skeleton if we have just the user prompt message and pending subnets
+		const hasOnlyUserMessage =
+			chatMessages.length === 1 && chatMessages[0].type === "user";
+		const hasPendingSubnets = currentWorkflowData?.subnets?.some(
+			(subnet: any) => subnet.status === "pending"
+		);
+		const hasCompletedSubnets = currentWorkflowData?.subnets?.some(
+			(subnet: any) =>
+				subnet.status === "done" || subnet.status === "completed"
+		);
+
+		// Show skeleton only if:
+		// 1. We have only the user message
+		// 2. There are pending subnets
+		// 3. There are NO completed subnets
+		return hasOnlyUserMessage && hasPendingSubnets && !hasCompletedSubnets;
+	};
+
 	return (
 		<div className="relative w-full h-full flex flex-col">
 			{chatMessages.length === 0 ? (
 				<ChatSkeleton />
+			) : shouldShowSkeleton() ? (
+				<div className="flex-1 p-4 pb-24 min-h-0">
+					<div
+						ref={chatContainerRef}
+						className="overflow-y-auto scrollbar-hide h-[calc(100vh-10rem)] flex flex-col gap-4"
+						onScroll={handleScroll}
+					>
+						{/* Show the user message */}
+						{chatMessages
+							.filter((message) => message.type === "user")
+							.map((message, index) => (
+								<ChatMessage
+									key={`${urlWorkflowId}-${message.id}`}
+									message={message}
+									isLast={false}
+									onNotificationYes={handleNotificationYes}
+									onNotificationNo={handleNotificationNo}
+									isPendingNotification={false}
+									onFeedbackSubmit={handleFeedbackSubmit}
+									onFeedbackProceed={handleFeedbackProceed}
+									showFeedbackButtons={false}
+									workflowStatus={workflowStatus}
+								/>
+							))}
+
+						{/* Show skeleton for pending response */}
+						<ChatSkeleton />
+						<div ref={messagesEndRef} />
+					</div>
+				</div>
 			) : (
 				<div className="flex-1 p-4 pb-24 min-h-0">
 					<div
