@@ -301,11 +301,10 @@ export const useWorkflowExecution = ({
 				resetFeedbackState();
 
 				// Clear previous state and cache
-				setChatMessages([]);
 				setCurrentWorkflowData(null);
 				lastQuestionRef.current = null;
 
-				// Add user message
+				// Add user message immediately without clearing first (to prevent glitchy skeleton)
 				const userMessage: ChatMsg = {
 					id: `user_${Date.now()}`,
 					type: "user",

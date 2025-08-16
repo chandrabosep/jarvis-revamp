@@ -270,14 +270,8 @@ export default function AgentChatPage() {
 						// Only proceed if we're still on the same workflow
 						if (urlWorkflowId === searchParams.get("workflowId")) {
 							console.log(
-								`🗑️ Clearing messages for workflow switch`
+								`🔄 Switching to workflow: ${urlWorkflowId}`
 							);
-							clearMessages();
-							resetFeedbackState();
-
-							setChatMessages([]);
-							setPendingNotifications([]);
-							setIsShowingCachedMessages(false);
 
 							// Load cached messages for the new workflow
 							const cachedMessages =
@@ -286,6 +280,12 @@ export default function AgentChatPage() {
 								console.log(
 									`📋 Loading cached messages for workflow: ${urlWorkflowId}`
 								);
+								// Only clear if we have cached messages to replace with
+								clearMessages();
+								resetFeedbackState();
+								setChatMessages([]);
+								setPendingNotifications([]);
+
 								setIsShowingCachedMessages(true);
 								setChatMessagesWithWorkflowCheck(
 									cachedMessages,
@@ -293,9 +293,11 @@ export default function AgentChatPage() {
 								);
 							} else {
 								console.log(
-									`📋 No cached messages found for workflow: ${urlWorkflowId}`
+									`📋 No cached messages found for workflow: ${urlWorkflowId} - keeping current state`
 								);
+								// Don't clear messages if no cached messages
 								setIsShowingCachedMessages(false);
+								resetFeedbackState();
 							}
 
 							// Start polling for the new workflow
@@ -308,47 +310,51 @@ export default function AgentChatPage() {
 					}, 100);
 				} else {
 					// No previous workflow, proceed immediately
-					console.log(`🗑️ Clearing messages for new workflow`);
-					clearMessages();
-					resetFeedbackState();
+					console.log(`🔄 Starting new workflow: ${urlWorkflowId}`);
 
-					setChatMessages([]);
-					setPendingNotifications([]);
-					setIsShowingCachedMessages(false);
-
-					setTimeout(() => {
-						const cachedMessages =
-							getCachedChatMessages(urlWorkflowId);
-						if (cachedMessages && cachedMessages.length > 0) {
-							console.log(
-								`📋 Loading cached messages for workflow: ${urlWorkflowId}`
-							);
-							setIsShowingCachedMessages(true);
-							setChatMessagesWithWorkflowCheck(
-								cachedMessages,
-								urlWorkflowId
-							);
-							// Don't include history since cached messages already have it
-							isLoadingExistingWorkflow.current = false;
-						} else {
-							console.log(
-								`📋 No cached messages found for workflow: ${urlWorkflowId}`
-							);
-							setIsShowingCachedMessages(false);
-							// Include history on first load since no cached messages
-							isLoadingExistingWorkflow.current = true;
-						}
-
-						startPollingExistingWorkflow(
-							urlWorkflowId,
-							skyBrowser,
-							address
+					// Check for cached messages first
+					const cachedMessages = getCachedChatMessages(urlWorkflowId);
+					if (cachedMessages && cachedMessages.length > 0) {
+						console.log(
+							`📋 Loading cached messages for workflow: ${urlWorkflowId}`
 						);
-					}, 0);
+						// Only clear if we have cached messages to replace with
+						clearMessages();
+						resetFeedbackState();
+						setChatMessages([]);
+						setPendingNotifications([]);
+
+						setIsShowingCachedMessages(true);
+						setChatMessagesWithWorkflowCheck(
+							cachedMessages,
+							urlWorkflowId
+						);
+						// Don't include history since cached messages already have it
+						isLoadingExistingWorkflow.current = false;
+					} else {
+						console.log(
+							`📋 No cached messages found for workflow: ${urlWorkflowId} - keeping current state`
+						);
+						// Don't clear messages if no cached messages - let the workflow execution handle it
+						setIsShowingCachedMessages(false);
+						resetFeedbackState();
+						// Include history on first load since no cached messages
+						isLoadingExistingWorkflow.current = true;
+					}
+
+					// Start polling for the new workflow immediately
+					startPollingExistingWorkflow(
+						urlWorkflowId,
+						skyBrowser,
+						address
+					);
 				}
 			}
-		} else if (currentWorkflowId && !urlWorkflowId) {
-			console.log(`🔄 No workflow ID in URL, clearing current workflow`);
+		} else if (currentWorkflowId && !urlWorkflowId && !isExecuting) {
+			// Only clear when user navigates away from workflow (not during workflow startup)
+			console.log(
+				`🔄 No workflow ID in URL and not executing, clearing current workflow`
+			);
 			clearWorkflow();
 			clearMessages();
 			resetFeedbackState();
@@ -363,6 +369,7 @@ export default function AgentChatPage() {
 		address,
 		urlWorkflowId,
 		currentWorkflowId,
+		isExecuting,
 		clearWorkflow,
 		clearMessages,
 		resetFeedbackState,
@@ -716,58 +723,38 @@ export default function AgentChatPage() {
 			return false;
 		}
 
-		// Only show skeleton if we have just the user prompt message and pending subnets
+		// Don't show skeleton if we have any non-user messages (responses, workflow messages, etc.)
+		const hasNonUserMessages = chatMessages.some(
+			(message) => message.type !== "user"
+		);
+		if (hasNonUserMessages) {
+			return false;
+		}
+
+		// Only show skeleton if we have just the user prompt message and no workflow activity yet
 		const hasOnlyUserMessage =
 			chatMessages.length === 1 && chatMessages[0].type === "user";
-		const hasPendingSubnets = currentWorkflowData?.subnets?.some(
-			(subnet: any) => subnet.status === "pending"
-		);
-		const hasCompletedSubnets = currentWorkflowData?.subnets?.some(
+
+		// Don't show skeleton if workflow has started processing (has any subnet with status other than pending)
+		const hasWorkflowActivity = currentWorkflowData?.subnets?.some(
 			(subnet: any) =>
-				subnet.status === "done" || subnet.status === "completed"
+				subnet.status === "in_progress" ||
+				subnet.status === "done" ||
+				subnet.status === "completed" ||
+				subnet.status === "waiting_response" ||
+				subnet.data // If subnet has data, don't show skeleton
 		);
 
 		// Show skeleton only if:
 		// 1. We have only the user message
-		// 2. There are pending subnets
-		// 3. There are NO completed subnets
-		return hasOnlyUserMessage && hasPendingSubnets && !hasCompletedSubnets;
+		// 2. No workflow activity has started yet (all subnets are just pending without data)
+		return hasOnlyUserMessage && !hasWorkflowActivity;
 	};
 
 	return (
 		<div className="relative w-full h-full flex flex-col">
 			{chatMessages.length === 0 ? (
 				<ChatSkeleton />
-			) : shouldShowSkeleton() ? (
-				<div className="flex-1 p-4 pb-24 min-h-0">
-					<div
-						ref={chatContainerRef}
-						className="overflow-y-auto scrollbar-hide h-[calc(100vh-10rem)] flex flex-col gap-4"
-						onScroll={handleScroll}
-					>
-						{/* Show the user message */}
-						{chatMessages
-							.filter((message) => message.type === "user")
-							.map((message, index) => (
-								<ChatMessage
-									key={`${urlWorkflowId}-${message.id}`}
-									message={message}
-									isLast={false}
-									onNotificationYes={handleNotificationYes}
-									onNotificationNo={handleNotificationNo}
-									isPendingNotification={false}
-									onFeedbackSubmit={handleFeedbackSubmit}
-									onFeedbackProceed={handleFeedbackProceed}
-									showFeedbackButtons={false}
-									workflowStatus={workflowStatus}
-								/>
-							))}
-
-						{/* Show skeleton for pending response */}
-						<ChatSkeleton />
-						<div ref={messagesEndRef} />
-					</div>
-				</div>
 			) : (
 				<div className="flex-1 p-4 pb-24 min-h-0">
 					<div
@@ -837,6 +824,22 @@ export default function AgentChatPage() {
 									workflowStatus={workflowStatus}
 								/>
 							))}
+
+						{/* Show skeleton when waiting for responses */}
+						{shouldShowSkeleton() && (
+							<div className="space-y-2">
+								<div className="py-3 rounded-md space-y-2">
+									<Skeleton className="h-4 w-36" />
+									<Skeleton className="h-4 w-32" />
+									<Skeleton className="h-20 w-full" />
+									<div className="flex items-center space-x-2 mt-2">
+										<Skeleton className="h-4 w-20 rounded" />
+										<Skeleton className="h-4 w-12" />
+									</div>
+								</div>
+							</div>
+						)}
+
 						<div ref={messagesEndRef} />
 					</div>
 				</div>
