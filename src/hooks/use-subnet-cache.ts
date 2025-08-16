@@ -3,6 +3,46 @@ import { useSubnetCacheStore } from "@/stores";
 import { ChatMsg } from "@/types/chat";
 import { parseAgentResponse, createContentHash } from "@/utils/message-parser";
 
+// Helper function to detect potential data duplication
+const detectDataDuplication = (
+	subnet: any
+): { hasDuplication: boolean; details: string } => {
+	if (
+		!subnet.data ||
+		!subnet.feedbackHistory ||
+		subnet.feedbackHistory.length === 0
+	) {
+		return {
+			hasDuplication: false,
+			details: "No potential for duplication",
+		};
+	}
+
+	try {
+		const subnetDataContent =
+			typeof subnet.data === "string"
+				? subnet.data
+				: JSON.stringify(subnet.data);
+		const feedbackContent =
+			subnet.feedbackHistory[0]?.response?.message || "";
+
+		// Simple check if the content is similar (first 200 characters)
+		const subnetPreview = subnetDataContent.slice(0, 200);
+		const feedbackPreview = feedbackContent.slice(0, 200);
+
+		const similarity =
+			subnetPreview.includes(feedbackPreview) ||
+			feedbackPreview.includes(subnetPreview);
+
+		return {
+			hasDuplication: similarity,
+			details: `Subnet data: ${subnetPreview}... | Feedback: ${feedbackPreview}...`,
+		};
+	} catch (error) {
+		return { hasDuplication: false, details: "Error checking duplication" };
+	}
+};
+
 export const useSubnetCache = () => {
 	const {
 		cacheSubnetData,
@@ -203,6 +243,16 @@ export const useSubnetCache = () => {
 				const hasFeedbackHistory =
 					subnet.feedbackHistory && subnet.feedbackHistory.length > 0;
 
+				// Check for potential data duplication
+				const duplicationCheck = detectDataDuplication(subnet);
+				if (duplicationCheck.hasDuplication && includeHistory) {
+					console.log(
+						`⚠️ Detected data duplication for subnet ${index}:`,
+						duplicationCheck.details
+					);
+				}
+
+				// Original logic preserved - only add duplication check for specific case
 				const shouldGenerateMessage =
 					(!hasFeedbackHistory || !includeHistory) && // Skip if feedback history exists AND we're including history
 					!isResumingWorkflow && // Prevent message generation during workflow resumption
@@ -234,6 +284,8 @@ export const useSubnetCache = () => {
 						dataPreview: subnet.data
 							? JSON.stringify(subnet.data).slice(0, 100)
 							: "no-data",
+						skipDueToDuplication:
+							hasFeedbackHistory && includeHistory,
 					}
 				);
 
@@ -394,11 +446,15 @@ export const useSubnetCache = () => {
 				}
 
 				if (hasFeedbackHistory && includeHistory) {
+					console.log(
+						`📋 Processing feedback history for subnet ${index} - this replaces duplicate data from subnet.data field`
+					);
 					subnet.feedbackHistory.forEach(
 						(feedbackItem: any, feedbackIndex: number) => {
 							const feedbackBaseKey = `feedback_${workflowId}_${index}_${feedbackIndex}`;
 
 							// Create system response message from feedback history
+							// Note: This contains the same data as subnet.data but in processed form
 							const responseKey = `${feedbackBaseKey}_response`;
 							if (!messageIds.has(responseKey)) {
 								const responseMessage: ChatMsg = {
@@ -415,7 +471,7 @@ export const useSubnetCache = () => {
 								dataMessages.push(responseMessage);
 								messageIds.add(responseKey);
 								console.log(
-									`📋 Feedback response message generated for subnet ${index}, feedback ${feedbackIndex}`
+									`📋 Feedback response message generated for subnet ${index}, feedback ${feedbackIndex} (replaces duplicate subnet.data)`
 								);
 							}
 
