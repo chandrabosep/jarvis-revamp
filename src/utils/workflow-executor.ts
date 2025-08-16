@@ -8,6 +8,7 @@ import {
 } from "@/types";
 import SkyMainBrowser from "@decloudlabs/skynet/lib/services/SkyMainBrowser";
 import { Web3Context } from "@/types/wallet";
+import { getUserAgentNFTIds } from "@/utils/skynetHelper";
 
 export class WorkflowExecutor {
 	private static instance: WorkflowExecutor;
@@ -498,12 +499,19 @@ export class WorkflowExecutor {
 		// Get authentication data
 		const authData = await this.getAuthData(skyBrowser, userAddress);
 
+		// Get user's actual NFT ID from the specific agent collection
+		const userAgentNFTId = await this.getUserNFTId(
+			agentDetail,
+			userAddress,
+			skyBrowser
+		);
+
 		// Transform subnet_list to workflow format
 		const workflow = agentDetail.subnet_list.map((subnet) => ({
 			itemID: subnet.itemID.toString(),
 			agentCollection: {
 				agentAddress: agentDetail.nft_address,
-				agentID: "0",
+				agentID: userAgentNFTId, // Use actual user's NFT ID from agent collection
 			},
 			feedback: subnet.feedback || false, // Include feedback if available
 		}));
@@ -512,6 +520,15 @@ export class WorkflowExecutor {
 			agentId: agentDetail.id,
 			prompt: userPrompt,
 			workflow: workflow,
+			userAuthPayload: {
+				userAddress: userAddress,
+				signature: authData.signature,
+				message: authData.message,
+			},
+			accountNFT: {
+				collectionID: agentDetail.nft_address, // Agent's NFT collection address
+				nftID: userAgentNFTId, // User's specific NFT ID from this agent collection
+			},
 		};
 	}
 
@@ -524,25 +541,33 @@ export class WorkflowExecutor {
 		skyBrowser: SkyMainBrowser
 	): Promise<string> {
 		try {
-			// Try to get the first NFT the user owns from the agent collection
-			const userNftBalance =
-				await skyBrowser.contractService.AgentNFT.balanceOf(
-					userAddress
-				);
+			// Get the specific agent's NFT collection address
+			const agentAddress =
+				agentDetail.nft_address || agentDetail.collection_id;
+			if (!agentAddress) {
+				console.warn("No agent NFT address found, using fallback");
+				return agentDetail.agentNFTId || "0";
+			}
 
-			if (userNftBalance && userNftBalance > 0) {
-				const firstNftId =
-					await skyBrowser.contractService.AgentNFT.tokenOfOwnerByIndex(
-						userAddress,
-						0
-					);
-				return firstNftId.toString();
+			// Use the utility function to get user's NFT IDs from this specific agent collection
+			const userAgentNFTIds = await getUserAgentNFTIds(
+				agentAddress,
+				userAddress,
+				skyBrowser
+			);
+
+			if (userAgentNFTIds && userAgentNFTIds.length > 0) {
+				// Return the first (lowest) NFT ID the user owns from this agent collection
+				return userAgentNFTIds[0];
 			}
 
 			// Fallback to using the agent's NFT ID if user doesn't own any
 			return agentDetail.agentNFTId || "0";
 		} catch (error) {
-			console.warn("Failed to get user's NFT ID, using fallback:", error);
+			console.warn(
+				"Failed to get user's NFT ID from agent collection:",
+				error
+			);
 			return agentDetail.agentNFTId || "0";
 		}
 	}
@@ -566,27 +591,13 @@ export class WorkflowExecutor {
 			return this.currentWorkflowId;
 		}
 
-		// Construct the payload automatically with authentication
+		// Construct the payload automatically with authentication and NFT ID
 		const payload = await this.constructExecutionPayload(
 			agentDetail,
 			userPrompt,
 			userAddress,
 			skyBrowser
 		);
-
-		// Optionally get the user's actual NFT ID
-		try {
-			const userNFTId = await this.getUserNFTId(
-				agentDetail,
-				userAddress,
-				skyBrowser
-			);
-			if (payload.accountNFT) {
-				payload.accountNFT.nftID = userNFTId;
-			}
-		} catch (error) {
-			console.warn("Using fallback NFT ID:", error);
-		}
 
 		// Execute the workflow
 		return this.executeWorkflow(
