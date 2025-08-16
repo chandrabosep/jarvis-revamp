@@ -6,6 +6,7 @@ import React, {
 	useEffect,
 	useMemo,
 } from "react";
+import { useParams, useSearchParams } from "next/navigation";
 import {
 	Sidebar,
 	SidebarMenuButton,
@@ -81,12 +82,16 @@ const WorkflowItem = React.memo(
 		sidebarIsExpanded,
 		handleMenuSelectOpenChange,
 		onPrefetch,
+		isSelected,
+		isRunning,
 	}: {
 		workflow: WorkflowItem;
 		index: number;
 		sidebarIsExpanded: boolean;
 		handleMenuSelectOpenChange: (open: boolean) => void;
 		onPrefetch: (workflowId: string) => void;
+		isSelected: boolean;
+		isRunning: boolean;
 	}) => {
 		const Icon = getWorkflowIcon(workflow.status);
 
@@ -95,8 +100,19 @@ const WorkflowItem = React.memo(
 				key={workflow.requestId || workflow.id || index}
 				className="w-full"
 			>
-				<SidebarMenuButton asChild className="p-1 w-full">
-					<div className="w-full font-medium hover:text-primary-foreground transition-colors duration-150">
+				<SidebarMenuButton
+					asChild
+					className={`p-1 w-full ${
+						isSelected
+							? "bg-primary/20 border-l-2 border-primary"
+							: ""
+					}`}
+				>
+					<div
+						className={`w-full font-medium hover:text-primary-foreground transition-colors duration-150 ${
+							isSelected ? "text-primary" : ""
+						}`}
+					>
 						<Link
 							href={`/chat/agent/${workflow.agentId}?workflowId=${workflow.requestId}`}
 							className="w-full flex items-center justify-center gap-x-1.5"
@@ -168,6 +184,11 @@ const ChatSidebar = React.memo(() => {
 	const { address, skyBrowser } = useWallet();
 	const { isRunning } = useExecutionStatusStore();
 	const queryClient = useQueryClient();
+
+	const params = useParams();
+	const searchParams = useSearchParams();
+	const currentAgentId = params?.id as string;
+	const currentWorkflowId = searchParams?.get("workflowId");
 
 	const hasWallet = !!address;
 
@@ -431,24 +452,42 @@ const ChatSidebar = React.memo(() => {
 									</div>
 								)}
 								{visibleItems.map(
-									(workflow: WorkflowItem, index: number) => (
-										<WorkflowItem
-											key={
-												workflow.requestId ||
-												workflow.id ||
-												index
-											}
-											workflow={workflow}
-											index={index}
-											sidebarIsExpanded={
-												sidebarIsExpanded
-											}
-											handleMenuSelectOpenChange={
-												handleMenuSelectOpenChange
-											}
-											onPrefetch={handlePrefetchChatData}
-										/>
-									)
+									(workflow: WorkflowItem, index: number) => {
+										const isSelected =
+											currentAgentId ===
+												workflow.agentId &&
+											currentWorkflowId ===
+												workflow.requestId;
+
+										const isRunning =
+											workflow.status === "in_progress" ||
+											workflow.status ===
+												"waiting_response" ||
+											workflow.status === "pending";
+
+										return (
+											<WorkflowItem
+												key={
+													workflow.requestId ||
+													workflow.id ||
+													index
+												}
+												workflow={workflow}
+												index={index}
+												sidebarIsExpanded={
+													sidebarIsExpanded
+												}
+												handleMenuSelectOpenChange={
+													handleMenuSelectOpenChange
+												}
+												onPrefetch={
+													handlePrefetchChatData
+												}
+												isSelected={isSelected}
+												isRunning={isRunning}
+											/>
+										);
+									}
 								)}
 							</>
 						)}
